@@ -1,0 +1,33 @@
+{
+  "name": "orbital_tomb_meridian-station-before-the-first-cut",
+  "version": "1.0.0",
+  "description": "A 90-second deterministic Meridian Station film study, inspection player, and offline evidence renderer",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "frames": "node tools/render-frames.mjs",
+    "test:state": "node --test tests/state.test.mjs",
+    "test:browser": "node --test tests/browser.test.mjs",
+    "test": "node --test tests/state.test.mjs tests/browser.test.mjs",
+    "check:build": "node tools/check-build.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/westkitty/orbital_tomb_MERIDIAN-STATION-Before-the-First-Cut.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/westkitty/orbital_tomb_MERIDIAN-STATION-Before-the-First-Cut/issues"
+  },
+  "homepage": "https://github.com/westkitty/orbital_tomb_MERIDIAN-STATION-Before-the-First-Cut#readme",
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "pureimage": "^0.5.0"
+  },
+  "type": "module"
+}
