@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian Station — Before the First Cut</title>
+<meta name="description" content="A 90-second authored cut aboard Meridian Station: 30 seconds of working life, then six months of quiet dismantling. No speech, no music.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./src/style.css">
+</head>
+<body class="film">
+<a class="skip" href="#filmbar">Skip to controls</a>
+<div id="app">
+  <header>
+    <h1>MERIDIAN STATION</h1>
+    <span class="sub">Before the First Cut · 90s · no speech / no music</span>
+    <nav class="mode-tabs" aria-label="Viewing mode">
+      <button id="modeFilm" aria-pressed="true">Film</button>
+      <button id="modeInspect" aria-pressed="false">Inspect</button>
+    </nav>
+  </header>
+  <main>
+    <section id="stage" aria-label="Film stage">
+      <canvas id="film" aria-label="Meridian Station film canvas"></canvas>
+      <div id="hud" aria-hidden="true"></div>
+    </section>
+    <aside id="panel" aria-label="Inspection panel">
+      <section>
+        <h2>Chapters</h2>
+        <div class="chapters">
+          <button data-start="0" data-end="8">Life — Docking</button>
+          <button data-start="8" data-end="14">Life — Habitat</button>
+          <button data-start="14" data-end="20">Life — Hydroponics</button>
+          <button data-start="20" data-end="30">Life — Observation</button>
+          <button data-start="30" data-end="40">M1 First Arm</button>
+          <button data-start="40" data-end="50">M2 Ring &amp; Hesh</button>
+          <button data-start="50" data-end="60">M3 North Vent</button>
+          <button data-start="60" data-end="70">M4 Hydroponics</button>
+          <button data-start="70" data-end="80">M5 Reliquary</button>
+          <button data-start="80" data-end="90">M6 The Bloom</button>
+        </div>
+      </section>
+      <section>
+        <h2>Physical systems</h2>
+        <label for="system">Jump to system</label>
+        <select id="system">
+          <option value="docking">Docking arms</option>
+          <option value="transit">Transit / pressure</option>
+          <option value="hydro">Hydroponics</option>
+          <option value="chapel">Observation chapel</option>
+          <option value="relay">Comms relay</option>
+          <option value="cryo">Cryo vault</option>
+          <option value="antenna">Antenna grid</option>
+          <option value="sail">Thermal sails</option>
+        </select>
+      </section>
+      <section>
+        <h2>Before / after</h2>
+        <label><input type="checkbox" id="beforeAfter"> Side-by-side: before (left) / after (right)</label>
+        <label for="baCamera">Camera</label>
+        <select id="baCamera">
+          <option value="docking">Docking socket</option>
+          <option value="hydro">Hydroponics</option>
+          <option value="chapel">Observation room</option>
+        </select>
+      </section>
+      <section>
+        <h2>Accessibility &amp; sound</h2>
+        <label><input type="checkbox" id="reduced"> Reduced effects (fewer particles, lower pixel ratio)</label>
+        <label><input type="checkbox" id="sound"> Machinery ambience (optional, nonverbal)</label>
+        <p style="font-size:12px;color:var(--dim)">Keyboard: Space play/pause · ←/→ scrub 1s · 1–9 early chapters, 0 = Month 6 · F film · I inspect. Viewing tools never change story state.</p>
+      </section>
+      <section>
+        <h2>World state (read-only)</h2>
+        <div id="stateOut" aria-live="off"></div>
+      </section>
+    </aside>
+  </main>
+  <footer id="filmbar">
+    <button id="play" aria-label="Play or pause">Pause</button>
+    <button id="restart">Restart</button>
+    <button id="back" aria-label="Back one second">−1s</button>
+    <button id="fwd" aria-label="Forward one second">+1s</button>
+    <span class="time" id="time">00:00.0 / 01:30</span>
+    <input type="range" id="scrub" min="0" max="90" step="0.1" value="0" aria-label="Scrub timeline">
+  </footer>
+</div>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
