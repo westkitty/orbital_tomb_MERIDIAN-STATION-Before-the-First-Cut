@@ -9,10 +9,12 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "frames": "node tools/render-frames.mjs",
-    "test:state": "node --test tests/state.test.mjs",
+    "test:state": "node --test tests/state.test.mjs tests/last-shift.test.mjs",
     "test:browser": "node --test tests/browser.test.mjs",
-    "test": "node --test tests/state.test.mjs tests/browser.test.mjs",
-    "check:build": "node tools/check-build.mjs"
+    "test": "node --test tests/state.test.mjs tests/last-shift.test.mjs tests/browser.test.mjs",
+    "check:build": "node tools/check-build.mjs",
+    "test:e2e": "node tools/browser-smoke.mjs",
+    "smoke:live": "node tools/browser-smoke.mjs"
   },
   "repository": {
     "type": "git",
@@ -27,6 +29,7 @@
   "homepage": "https://github.com/westkitty/orbital_tomb_MERIDIAN-STATION-Before-the-First-Cut#readme",
   "devDependencies": {
     "jsdom": "^31.0.1",
+    "playwright": "^1.65.1",
     "pureimage": "^0.5.0"
   },
   "type": "module"

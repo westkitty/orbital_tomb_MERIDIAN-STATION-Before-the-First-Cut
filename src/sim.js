@@ -4,6 +4,15 @@
 
 export const DURATION = 90;
 export const LIFE_END = 30;
+export const GEOMETRY = Object.freeze({
+  ringDiameterKm: 8.7,
+  ringRadialThicknessKm: 1.3,
+  spireAboveRingKm: 10.4,
+  spineBelowRingKm: 6.9,
+  initialDockingArms: 12,
+  observationBays: 3,
+  panesPerObservationBay: 2,
+});
 
 export const CHAPTERS = [
   { id: 'life-dock',    label: 'Life — Docking',      start: 0,  end: 8,  month: 0 },
@@ -53,13 +62,6 @@ const _rng = mulberry32(8700);
 export const STARS = Array.from({ length: 220 }, () => ({ x: _rng(), y: _rng(), r: 0.4 + _rng() * 1.4, tw: _rng() * Math.PI * 2 }));
 export const DEBRIS = Array.from({ length: 60 }, (_, i) => ({ id: 'debris.' + i, x: _rng(), y: _rng(), vx: (_rng() - 0.5) * 0.02, vy: (_rng() - 0.5) * 0.02, s: 1 + _rng() * 3 }));
 
-// Camera locks for the three match cuts. Same camera + geometry for intact/damaged pairs.
-export const CAMERAS = {
-  docking:  { id: 'cam.docking',  label: 'Docking socket',  intactT: 6,  damagedT: 36, centerX: 0.53, focusY: 0.34, zoom: 1.35, rotation: 0.28 },
-  hydro:    { id: 'cam.hydro',    label: 'Hydroponics',     intactT: 18, damagedT: 66 },
-  chapel:   { id: 'cam.chapel',   label: 'Observation room', intactT: 26, damagedT: 84 },
-};
-
 // Core state: pure function of t. Scrubbing reconstructs the exact historical state.
 export function stateAt(tRaw) {
   const t = Math.min(Math.max(tRaw, 0), DURATION);
@@ -71,24 +73,26 @@ export function stateAt(tRaw) {
   else if (t < 34) arm01 = { phase: 'peeling', peel: seg(t, 30, 34), drift: 0 };
   else if (t < 40) arm01 = { phase: 'detached', peel: 1, drift: seg(t, 34, 40) * 0.15 };
   else if (t < 80) arm01 = { phase: 'transit', peel: 1, drift: 0.15 + seg(t, 40, 80) * 0.45 };
-  else arm01 = { phase: 'bloom', peel: 1, drift: 0.6 + seg(t, 80, 90) * 0.4 };
+  else if (t < 86) arm01 = { phase: 'transit', peel: 1, drift: 0.6 + seg(t, 80, 86) * 0.4 };
+  else arm01 = { phase: 'placed', peel: 1, drift: 1 };
 
   // --- Ring segment 02 (comp.segment02) ---
   let segment02;
   if (t < 40) segment02 = { phase: 'intact', peel: 0, drift: 0 };
   else if (t < 44) segment02 = { phase: 'peeling', peel: seg(t, 40, 44), drift: 0 };
   else if (t < 50) segment02 = { phase: 'detached', peel: 1, drift: seg(t, 44, 50) * 0.2 };
-  else if (t < 80) segment02 = { phase: 'transit', peel: 1, drift: 0.2 + seg(t, 50, 80) * 0.4 };
-  else segment02 = { phase: 'bloom', peel: 1, drift: 0.6 + seg(t, 80, 90) * 0.4 };
+  else if (t < 86) segment02 = { phase: 'transit', peel: 1, drift: 0.2 + seg(t, 50, 86) * 0.8 };
+  else segment02 = { phase: 'placed', peel: 1, drift: 1 };
 
   // --- Hydroponics rack (comp.hydro_rack) ---
   let hydroRack;
   if (t < 60) hydroRack = { phase: 'tended', rupture: 0, drift: 0 };
   else if (t < 64) hydroRack = { phase: 'rupturing', rupture: seg(t, 60, 64), drift: 0 };
-  else if (t < 80) hydroRack = { phase: 'ruptured', rupture: 1, drift: seg(t, 64, 80) * 0.3 };
-  else hydroRack = { phase: 'bloom', rupture: 1, drift: 0.3 + seg(t, 80, 90) * 0.7 };
+  else if (t < 70) hydroRack = { phase: 'detached', rupture: 1, drift: seg(t, 64, 70) * 0.45 };
+  else if (t < 86) hydroRack = { phase: 'transit', rupture: 1, drift: 0.45 + seg(t, 70, 86) * 0.55 };
+  else hydroRack = { phase: 'placed', rupture: 1, drift: 1 };
 
-  const armsIntact = t < 30 ? 12 : 11; // arm01 removed at M1; never returns
+  const armsIntact = t < 30 ? GEOMETRY.initialDockingArms : GEOMETRY.initialDockingArms - 1; // arm01 removed at M1; never returns
 
   const doors = {
     dockCollarLocked: t >= 6,          // collar locks -> crew crossing possible
@@ -175,11 +179,14 @@ export function stateAt(tRaw) {
     ids: IDS,
     armsIntact, arm01, segment02, hydroRack,
     doors, paths, lights, props, landmarks, actors, tiger, finale, scars,
+    // Identity, phase, and destination persist from the intact station through
+    // release, transit, and final bloom placement in radial slots 0, 2, and 7.
     components: [
-      { id: 'comp.arm01', phase: arm01.phase, drift: arm01.drift },
-      { id: 'comp.segment02', phase: segment02.phase, drift: segment02.drift },
-      { id: 'comp.hydro_rack', phase: hydroRack.phase, drift: hydroRack.drift },
+      { id: 'comp.arm01', phase: arm01.phase, drift: arm01.drift, destination: 'radial-bloom', placementSector: 0 },
+      { id: 'comp.segment02', phase: segment02.phase, drift: segment02.drift, destination: 'radial-bloom', placementSector: 2 },
+      { id: 'comp.hydro_rack', phase: hydroRack.phase, drift: hydroRack.drift, destination: 'radial-bloom', placementSector: 7 },
     ],
+
     pressure: {
       dockIsolation: t >= 34,
       habNorthSealedEdge: t >= 52,

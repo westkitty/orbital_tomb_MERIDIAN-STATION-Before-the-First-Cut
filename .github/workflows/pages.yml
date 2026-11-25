@@ -25,16 +25,28 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Install locked test/render dependencies
+      - name: Install locked test, render, and browser dependencies
         run: npm ci
-      - name: State and jsdom browser-wiring tests
+      - name: Deterministic state and jsdom wiring tests
         run: npm test
-      - name: Render review evidence
+      - name: Render deterministic review frames
         run: npm run frames
       - name: Clean static build
         run: npm run build
       - name: Verify Pages artifact and release SHA
         run: npm run check:build
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Real Chromium interaction, subpath, and performance smoke
+        run: npm run test:e2e
+      - name: Upload browser stills and frame metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meridian-chromium-review-${{ github.run_id }}
+          path: artifacts/browser/
+          if-no-files-found: ignore
+          retention-days: 30
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
@@ -45,6 +57,8 @@ jobs:
   deploy:
     if: github.event_name != 'pull_request'
     needs: validate
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -52,3 +66,31 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  live-smoke:
+    if: github.event_name != 'pull_request'
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked browser dependencies
+        run: npm ci
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify deployed SHA and smoke-test the live cut
+        run: npm run smoke:live
+        env:
+          MERIDIAN_BASE_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECTED_SHA: ${{ github.sha }}
+      - name: Upload live-browser evidence and measured device data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meridian-live-smoke-${{ github.run_id }}
+          path: artifacts/browser/
+          if-no-files-found: ignore
+          retention-days: 30

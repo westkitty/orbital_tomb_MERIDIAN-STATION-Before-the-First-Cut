@@ -1,17 +1,17 @@
-# Asset receipt
+# Asset and canon receipt
 
-## Sources consulted
+## Reference material consulted
 
-The original brief and its linked Meridian station-state contract, visual locks, Tiger visual canon, Chapel/geometry references, and finale v02 references were consulted during the build. The source contracts supplied the story timing, station proportions, twelve-arm starting state, named crew/landmarks, Chapel bay/pane count, major system failures, and canonical Tiger silhouette constraints.
+The original Arena brief was read in full. Written references consulted included the station-state contract, visual locks, geometry lock v002, Chapel shell/light diagnostics, and Tiger canon. The approved crew/environment and finale v02 folders were inventoried, including their reference-plate names and subject coverage. These references informed the story clock, station dimensions, starting arm count, named landmarks, six-pane Chapel layout, system consequences, and Tiger constraints.
 
 ## What ships
 
-- All visible art in `src/render.js` is newly authored Canvas 2D vector/gradient artwork. It is a clean, stylized proxy—not a texture, screenshot, frame trace, render, or conversion of a Drive asset.
-- The same proxy station persists across shots: an 8.7 km ring proportion, central spire, lower spine, twelve fixed docking arms at the start, and steel-blue Virgil. The observation room keeps three canted bays with two panes each.
-- The Tiger proxy is deliberate and backlit, with pupil-less cyan eyes and a mineral-point grin; it has no anatomical nose or rendered teeth. The canon's 9 ft / 2.7432 m height takes precedence over the conflicting 3.05 m value in the state JSON, but the 2D drawing does not claim a physical scale calibration.
-- Rin, Mara, Hesh, Kira, Jalen, Safi, the survivor, and background crew are symbolic original vector figures. Their exact approved likenesses are not asserted.
-- No private Drive files, signed URLs, production audio, secrets, `.blend`/`.fbx` source, or unrelated project material are included. The only audio is optional, synthesized nonverbal oscillator/filter ambience generated at runtime.
+- Every visible image is newly authored Canvas 2D vector/gradient artwork in `src/render.js`. It is a clean, stylized proxy—not a trace, conversion, render, or screenshot of a Drive plate or production model.
+- The proxy has an explicit geometry contract: 8.7 km ring diameter, 1.3 km radial thickness, 10.4 km above-ring spire, 6.9 km below-ring spine, twelve starting arms, and three canted observation bays with two panes apiece. This is a 2D proportional study, not a calibrated 3D scale model.
+- The Tiger proxy follows selected written constraints (backlit stillness, cyan pupil-less eyes, mineral-like mouth detail, and no anatomical nose or rendered teeth). The written canon's 9 ft / 2.7432 m height is preferred over the conflicting 3.05 m value in the state JSON; the proxy itself is not physically scale-calibrated.
+- Rin, Mara, Hesh, Kira, Jalen, Safi, the survivor, and background crew are original symbolic vector figures. No exact approved likeness is claimed.
+- No Drive binary, private source art, signed link, production audio, secret, `.blend`/`.fbx`, or unrelated project asset ships. Optional ambience is synthesized locally with Web Audio and contains no speech or music.
 
-## Remaining verification gaps
+## Still unverified
 
-The code-level proxies follow the written facts above, but they are not validated against the original publishable binary references. Exact Meridian surface motifs and scale detailing, Chapel v003 PBR/material response, approved crew facial/body likeness, and the finale v02 camera/plate specifics remain unverified. In particular, the Pages build is a stylized 2D study and must not be described as a photorealistic 3D asset recreation.
+No original binary images, models, or final plates were imported into the public repository or visually compared pixel-for-pixel. Consequently, exact Meridian surface motifs and 3D geometry, approved crew and survivor likenesses, the Tiger's approved silhouette/crown/tail proportions, Chapel v003 material/light response, and finale v02 plate/camera specifics remain unverified. The only verified visual claims are the authored proxy's own deterministic frames and layout—not fidelity to the private Drive artwork. The Pages deliverable must be described as a stylized 2D study, not a photorealistic or canon-certified recreation.

@@ -5,7 +5,8 @@ import pureimage from 'pureimage';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stateAt, CAMERAS } from '../src/sim.js';
+import { stateAt } from '../src/sim.js';
+import { CAMERAS } from '../src/cameras.js';
 import { renderScene } from '../src/render.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,20 +26,29 @@ function renderTo(file, state, opts = {}) {
 }
 
 const shots = [
+  ['intact-00m01-station-wide.png', 1, {}],
   ['intact-00m06-docking.png', 6, {}],
   ['intact-00m14-interior-mug.png', 12, {}],
   ['intact-00m18-hydro.png', 18, {}],
   ['intact-00m26-chapel.png', 26, {}],
+  ['match-m1-before-00m29.9.png', 29.9, {}],
+  ['match-m1-after-00m33.png', 33, {}],
   ['mid-00m33-arm01-peeling.png', 33, {}],
   ['mid-00m36-seal-cart.png', 36, {}],
   ['mid-00m38-arm-detached.png', 38, {}],
+  ['match-m2-before-00m39.9.png', 39.9, {}],
+  ['match-m2-after-00m43.9.png', 43.9, {}],
   ['mid-00m44-hesh.png', 44, {}],
   ['mid-00m56-viewport-lane.png', 56, {}],
+  ['match-m4-before-00m59.9.png', 59.9, {}],
+  ['match-m4-after-01m03.9.png', 63.9, {}],
   ['mid-01m06-hydro-ruptured.png', 66, {}],
   ['mid-01m14-reliquary.png', 74, {}],
   ['mid-01m18-orbital-arrangement.png', 78, {}],
   ['final-01m21-hands.png', 81, {}],
-  ['final-01m24-exterior.png', 84, {}],
+  ['final-01m24-glass-crossing.png', 84, {}],
+  ['final-01m24-exterior.png', 84.6, {}],
+  ['final-01m25-orbit.png', 85.5, {}],
   ['final-01m27-bloom.png', 87, {}],
   ['final-01m29-return-hands.png', 89, {}],
 ];

@@ -10,10 +10,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
 const required = [
   'index.html', 'build-info.json', '.nojekyll',
-  'src/style.css', 'src/app.js', 'src/sim.js', 'src/render.js',
+  'src/style.css', 'src/app.js', 'src/sim.js', 'src/cameras.js', 'src/render.js',
+  'src/last-shift.js', 'src/last-shift-render.js',
 ];
 for (const file of required) assert.ok(existsSync(path.join(dist, file)), `missing dist/${file}`);
-for (const file of ['index.html', 'src/style.css', 'src/app.js', 'src/sim.js', 'src/render.js']) {
+for (const file of ['index.html', 'src/style.css', 'src/app.js', 'src/sim.js', 'src/cameras.js', 'src/render.js', 'src/last-shift.js', 'src/last-shift-render.js']) {
   assert.equal(readFileSync(path.join(dist, file), 'utf8'), readFileSync(path.join(root, file), 'utf8'), `dist/${file} is stale`);
 }
 
@@ -25,8 +26,11 @@ assert.doesNotMatch(html, /https?:\/\//, 'HTML must not require any remote runti
 
 const app = readFileSync(path.join(dist, 'src/app.js'), 'utf8');
 assert.match(app, /from '\.\/sim\.js'/);
+assert.match(app, /from '\.\/cameras\.js'/);
 assert.match(app, /from '\.\/render\.js'/);
-for (const file of ['src/style.css', 'src/app.js', 'src/sim.js', 'src/render.js']) {
+assert.match(app, /from '\.\/last-shift\.js'/);
+assert.match(app, /from '\.\/last-shift-render\.js'/);
+for (const file of ['src/style.css', 'src/app.js', 'src/sim.js', 'src/cameras.js', 'src/render.js', 'src/last-shift.js', 'src/last-shift-render.js']) {
   assert.doesNotMatch(readFileSync(path.join(dist, file), 'utf8'), /https?:\/\//, `${file} must not request a remote runtime asset`);
 }
 const info = JSON.parse(readFileSync(path.join(dist, 'build-info.json'), 'utf8'));

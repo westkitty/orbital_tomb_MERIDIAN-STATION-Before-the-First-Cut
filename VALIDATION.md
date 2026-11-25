@@ -1,31 +1,31 @@
 # Validation record
 
-## Baseline
+## Recovered baseline and release state
 
-The recovered upstream baseline was commit `13670c4eec0c392b11c41081baaa7bbfbaa24199` (`Initial commit`). It contained no prior runnable Meridian site, renderer, tests, or Pages workflow to preserve. This branch is the first implementation; no unrelated upstream build was overwritten.
+Work is on `arena/9503dac7-orbital-tomb-meridian-station`, branched from merged `main` commit `85a06aa4b2129c39344183990cdfc5cf22a0f2ae` (PR #1). The previously recorded Pages deployment is Actions run `45622494428` for that baseline SHA. This working tree is still uncommitted; no PR, new deployment, or served-SHA proof has been observed for these changes.
 
-## Reproducible local checks
+## Local checks run on 2026-11-25
 
-Run with Node 22 and the lockfile:
+- `npm test` — **35 passed, 0 failed**. Coverage includes the fixed 90-second timeline and exact 00:30 transition; deterministic state hashes under reordered seeks; persistent damage/IDs; Month 0 and later-state Last Shift comparisons; Month 4 hydroponics; recurring Observation Glass beats; frozen/restored film-clock behavior; accessible narrow-layout controls; and jsdom SVG route-state wiring.
+- `npm run frames` — **28** individual 960×600 pureimage stills rendered; the script confirmed the M6 opening and return-hands frames are pixel-identical. These are offline renders, not browser captures or video.
+- `node --check` passed for `src/last-shift.js`, `src/last-shift-render.js`, `src/app.js`, `tests/last-shift.test.mjs`, and `tests/browser.test.mjs`.
+- `npm run build` and `npm run check:build` passed. The checker reports **10 files, 10 chapters**, SHA `85a06aa4b2129c39344183990cdfc5cf22a0f2ae`.
+- `git diff --check` passed.
 
-```sh
-npm ci
-npm test
-npm run frames
-npm run build
-node tools/check-build.mjs
-```
+The local build stamp reflects baseline `git HEAD`, not the dirty working tree; it is not a release artifact. The deploy artifact must be rebuilt from the eventual release commit.
 
-The current Node runner contains 23 tests. The state suite checks the 90-second/30-second cut line, 29.9 vs 30.0, twelve intact arms before M1, monotonic scars, route/seal/light consequences, stable entity/component IDs, landmarks, finale order, and complete-state hashes after reordered seeks. The jsdom suite exercises player wiring, keyboard controls, chapter/system/before-after controls, range input at an emulated tablet-sized viewport, the subpath-safe source URLs, all chapter/finale boundaries, and a simulated 90-second playback/replay. jsdom does not execute the page in Chromium and an emulated viewport is not a tablet hardware pass.
+## Last Shift geometry and evidence limits
 
-`npm run frames` renders 19 individual 960×600 stills by running the same `sim.js` and `render.js` through pureimage; the script also asserts that M6's opening and return-hands frames are pixel-identical. The evidence set covers intact docking/interior/hydroponics/observation; M1 peel, seal/cart and detached arm; M2 Hesh; M3 return lane; M4 hydroponics breach; M5 placement/arrangement; the four M6 beats; and three matched before/after cameras. Pureimage output is an offline approximation, not a browser-rendered frame. The stills do not certify the moving composition or timing.
+The optional comparison samples the existing deterministic `stateAt(t)` simulation and does not mutate or advance the film clock. Tests cover the state flags and the normalized route illustration. The route map was compared with the authored First Slice plan shape and depicts an intact center route, the dock spur, the M1 detour, and the pressure closure. It remains a **normalized local-plan schematic**, not a surveyed whole-station coordinate frame. The Blender collision-ray evidence is not Unreal execution, navmesh proof, capsule-clearance proof, or human traversal. The source simulation's route flags and these tests do not certify physical navigation. The alcove waypoint is omitted because the referenced layout variants disagree there. Private Drive files/assets were not copied into or modified in the repository.
 
-The Actions workflow runs `npm ci`, `npm test`, `npm run frames`, a clean static build, and the `build-info.json`/asset-path check for pull requests; only a non-PR run deploys the validated `dist/` artifact with the official GitHub Pages actions. The served `build-info.json` is the release-SHA proof. CI output and the Pages deployment status are authoritative for the release commit.
+Month 0 hydroponics and Observation Glass comparisons, Month 4 hydroponics at 63.9s, recurring Month 3 glass at 56s, and Month 6 crossing/bloom/return beats are reconstructed from their actual film states. The comparison still uses a fixed matched view; its presentational animation does not create another world simulation.
 
-## Not certified in this sandbox
+## Real browser, performance, evidence capture, and devices
 
-- No downloadable/system Chromium or Firefox is available; the Playwright Chromium CDN is blocked. A real-browser visual pass and live interactive smoke test (start, jump to Month 6, replay) have **not** been executed.
-- Preview-hardware timing was not measured. The target of 95% of frames under 33 ms on desktop is **not measured**, not passed.
-- No physical tablet was tested. The jsdom viewport/input check is software-only.
-- No frame in `evidence/` is a browser capture or video; Canvas 2D implementations may rasterize differently by browser.
-- The visual and likeness limitations listed in [ASSET_RECEIPT.md](ASSET_RECEIPT.md) remain open.
+Playwright is a locked development dependency. A previous local `npm run test:e2e` attempt stopped before page launch because the expected Chromium executable was absent, and the browser download was blocked. No real-browser pass or Last Shift browser walkthrough/capture was run for this update. No local frame-time result, live-site interaction, release check, or physical-device test is claimed. Tablet-sized checks are software emulation, not hardware testing.
+
+The Pages workflow is configured to install Chromium, smoke-test the built artifact before deployment, and verify the deployed SHA and live experience afterward. Those steps are configuration only until an Actions run is observed; the prior successful Pages run applies only to the baseline SHA.
+
+## Asset and visual limits
+
+The visuals are hand-authored 2D proxies, not source-model or plate reconstructions. Exact station surface motifs and 3D geometry, approved crew/survivor likenesses, Tiger silhouette details, Chapel material/light response, and finale plate/camera fidelity remain unverified. No private Drive binary, signed link, `.blend`/`.fbx`, or production audio ships. See [ASSET_RECEIPT.md](ASSET_RECEIPT.md) for the full asset limits.

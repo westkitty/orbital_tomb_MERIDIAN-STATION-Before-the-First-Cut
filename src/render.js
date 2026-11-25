@@ -2,7 +2,8 @@
 // Layered canvas art: stars, Virgil, station, interiors, crew. Bounded particles.
 // Same camera/geometry reused for intact/damaged match cuts.
 
-import { STARS, DEBRIS, CAMERAS } from './sim.js';
+import { STARS, DEBRIS, GEOMETRY } from './sim.js';
+import { CAMERAS, shotAt } from './cameras.js';
 
 const CYAN = '#37e6ff', WARM = '#ffd9a0';
 
@@ -91,18 +92,28 @@ export function drawStationExterior(ctx, w, h, state, t, reduced, camera = {}) {
   drawVirgil(ctx, w, h, t, reduced);
 
   const cx = w * (camera.centerX ?? 0.40), cy = h * 0.50;
-  const R = Math.min(w, h) * 0.30;
+  const R = Math.min(w, h) * 0.30; // proxy scale for the 8.7 km ring diameter
+  const ringOuter = 1;
+  const ringInner = ringOuter * (1 - (2 * GEOMETRY.ringRadialThicknessKm) / GEOMETRY.ringDiameterKm);
+  const armCount = GEOMETRY.initialDockingArms;
   const squish = 0.42; // orbit-tilt ellipse
   const arm01Gone = state.arm01.phase !== 'intact';
-  const seg02Gone = state.segment02.phase === 'detached' || state.segment02.phase === 'transit' || state.segment02.phase === 'bloom';
+  const seg02Gone = ['detached', 'transit', 'placed'].includes(state.segment02.phase);
+  const segmentGap = state.segment02.phase === 'peeling' ? state.segment02.peel : (seg02Gone ? 1 : 0);
 
-  // lower spine + upper spire (with glow beacon)
-  const spireG = ctx.createLinearGradient(0, cy - R * 2.4, 0, cy + R * 2.4);
+  // Source proportions: 10.4 km above and 6.9 km below the 8.7 km outer diameter.
+  // The proxy scales those extents to the same radius used by the station ring.
+  const ringRadiusKm = GEOMETRY.ringDiameterKm / 2;
+  const upperTip = R * GEOMETRY.spireAboveRingKm / ringRadiusKm;
+  const lowerTip = R * GEOMETRY.spineBelowRingKm / ringRadiusKm;
+  const spireBase = upperTip - R * 0.18;
+  const spineBase = lowerTip - R * 0.18;
+  const spireG = ctx.createLinearGradient(0, cy - spireBase, 0, cy + spineBase);
   spireG.addColorStop(0, '#6a8296'); spireG.addColorStop(0.5, '#3d5164'); spireG.addColorStop(1, '#2b3a4a');
   ctx.strokeStyle = spireG; ctx.lineCap = 'round';
-  ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(cx, cy - R * 2.35); ctx.lineTo(cx, cy + R * 2.3); ctx.stroke();
-  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, cy - R * 2.7); ctx.lineTo(cx, cy - R * 2.35); ctx.stroke(); // antenna mast
-  ctx.beginPath(); ctx.moveTo(cx, cy + R * 2.3); ctx.lineTo(cx, cy + R * 2.75); ctx.stroke();   // lower mast
+  ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(cx, cy - spireBase); ctx.lineTo(cx, cy + spineBase); ctx.stroke();
+  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, cy - upperTip); ctx.lineTo(cx, cy - spireBase); ctx.stroke(); // antenna mast
+  ctx.beginPath(); ctx.moveTo(cx, cy + spineBase); ctx.lineTo(cx, cy + lowerTip); ctx.stroke(); // lower mast
   // truss struts at spire base
   ctx.lineWidth = 2; ctx.strokeStyle = '#4a6076';
   for (const dir of [-1, 1]) {
@@ -111,39 +122,38 @@ export function drawStationExterior(ctx, w, h, state, t, reduced, camera = {}) {
   }
   // bridge highlight
   ctx.strokeStyle = 'rgba(200,225,245,0.35)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(cx - 1.5, cy - R * 2.3); ctx.lineTo(cx - 1.5, cy + R * 2.3); ctx.stroke();
-  // spire beacon (deterministic blink)
-  const blink = (Math.sin(t * 2.4) > 0.55);
-  ctx.fillStyle = blink ? '#ff5a4a' : '#5a1f18';
-  ctx.beginPath(); ctx.arc(cx, cy - R * 2.72, 3.2, 0, Math.PI * 2); ctx.fill();
-  if (blink && !reduced) { ctx.fillStyle = 'rgba(255,90,74,0.18)'; ctx.beginPath(); ctx.arc(cx, cy - R * 2.72, 9, 0, Math.PI * 2); ctx.fill(); }
+  ctx.beginPath(); ctx.moveTo(cx - 1.5, cy - spireBase); ctx.lineTo(cx - 1.5, cy + spineBase); ctx.stroke();
+  // A quiet navigation lamp in the intact years; a red warning pulse begins only with M1.
+  const blink = state.t >= 30 && Math.sin(t * 2.4) > 0.55;
+  ctx.fillStyle = state.t < 30 ? '#e4bd82' : (blink ? '#ff5a4a' : '#5a1f18');
+  ctx.beginPath(); ctx.arc(cx, cy - upperTip, 3.2, 0, Math.PI * 2); ctx.fill();
+  if (blink && !reduced) { ctx.fillStyle = 'rgba(255,90,74,0.18)'; ctx.beginPath(); ctx.arc(cx, cy - upperTip, 9, 0, Math.PI * 2); ctx.fill(); }
 
-  // Locked inspection camera changes the ring plane, while the spire remains the station's axis.
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(camera.rotation || 0); ctx.translate(-cx, -cy);
-  // ring: filled annulus via two arcs (even-odd) for metallic gradient + dark inner gap
+  // Inspection cameras operate on the complete station view in renderCam().
+  // Annulus thickness follows the 1.3 km / 8.7 km geometry-lock ratio.
   ctx.save(); ctx.translate(cx, cy); ctx.scale(1, squish);
-  const ringG = ctx.createRadialGradient(0, 0, R * 0.86, 0, 0, R * 1.06);
+  const ringG = ctx.createRadialGradient(0, 0, R * ringInner, 0, 0, R * ringOuter);
   ringG.addColorStop(0, '#1b2733'); ringG.addColorStop(0.35, '#55697e'); ringG.addColorStop(0.5, '#8ca3b9'); ringG.addColorStop(0.65, '#415062'); ringG.addColorStop(1, '#141d28');
   ctx.fillStyle = ringG;
-  ctx.beginPath(); ctx.arc(0, 0, R * 1.06, 0, Math.PI * 2); ctx.arc(0, 0, R * 0.82, 0, Math.PI * 2); ctx.fill('evenodd');
-  // panel seams along ring
+  ctx.beginPath(); ctx.arc(0, 0, R * ringOuter, 0, Math.PI * 2); ctx.arc(0, 0, R * ringInner, 0, Math.PI * 2); ctx.fill('evenodd');
+  // three structural seams per fixed docking arm
   ctx.strokeStyle = 'rgba(10,16,24,0.65)'; ctx.lineWidth = 2;
-  for (let i = 0; i < 36; i++) {
-    const a = (i / 36) * Math.PI * 2;
-    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * 0.84, Math.sin(a) * R * 0.84); ctx.lineTo(Math.cos(a) * R * 1.05, Math.sin(a) * R * 1.05); ctx.stroke();
+  for (let i = 0; i < armCount * 3; i++) {
+    const a = (i / (armCount * 3)) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * (ringInner + 0.02), Math.sin(a) * R * (ringInner + 0.02)); ctx.lineTo(Math.cos(a) * R * (ringOuter - 0.01), Math.sin(a) * R * (ringOuter - 0.01)); ctx.stroke();
   }
   // running lights along outer rim
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + Math.PI / 12;
+  for (let i = 0; i < armCount; i++) {
+    const a = (i / armCount) * Math.PI * 2 + Math.PI / armCount;
     const relayCircuit = i % 3 === 0;
     ctx.fillStyle = relayCircuit && !state.lights.relayConnected ? '#1b2733' : (relayCircuit ? CYAN : 'rgba(220,235,250,0.75)');
-    ctx.beginPath(); ctx.arc(Math.cos(a) * R * 1.06, Math.sin(a) * R * 1.06, 2.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(Math.cos(a) * R * (ringOuter + 0.005), Math.sin(a) * R * (ringOuter + 0.005), 2.1, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 
-  // 12 fixed arms
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+  // 12 fixed arms at the initial state (one later detaches, never regrows).
+  for (let i = 0; i < armCount; i++) {
+    const a = (i / armCount) * Math.PI * 2 - Math.PI / 2;
     const isArm01 = i === 0;
     let hinge = 0;
     if (isArm01 && arm01Gone) {
@@ -190,32 +200,39 @@ export function drawStationExterior(ctx, w, h, state, t, reduced, camera = {}) {
     ctx.strokeStyle = '#ff9a6a'; ctx.strokeRect(x2 - 7, y2 - 7, 14, 14); // severed collar
   }
 
-  // ring segment 02 gap (M2+)
-  if (seg02Gone) {
-    const a = (2 / 12) * Math.PI * 2 - Math.PI / 2;
+  // Segment 02 opens gradually during M2, then remains a permanent ring gap.
+  if (segmentGap > 0) {
+    const a = (2 / armCount) * Math.PI * 2 - Math.PI / 2;
+    const halfGap = 0.26 * segmentGap;
+    const outerGap = ringOuter + 0.01, innerGap = ringInner - 0.01;
     ctx.save(); ctx.translate(cx, cy); ctx.scale(1, squish);
     ctx.fillStyle = '#04070d';
-    ctx.beginPath(); ctx.arc(0, 0, R * 1.07, a - 0.26, a + 0.26); ctx.arc(0, 0, R * 0.81, a + 0.26, a - 0.26, true); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,154,106,0.6)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, R * 1.07, a - 0.26, a - 0.22); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, R * 1.07, a + 0.22, a + 0.26); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R * outerGap, a - halfGap, a + halfGap); ctx.arc(0, 0, R * innerGap, a + halfGap, a - halfGap, true); ctx.fill();
+    if (segmentGap > 0.04) {
+      ctx.strokeStyle = 'rgba(255,154,106,0.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, R * outerGap, a - halfGap, a - halfGap * 0.85); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, R * outerGap, a + halfGap * 0.85, a + halfGap); ctx.stroke();
+    }
     ctx.restore();
   }
 
-  // detached components in transit / bloom — tumbling with tumbling-light glints
-  for (const c of state.components) {
-    if (c.phase === 'intact' || c.phase === 'tended') continue;
-    const ang = c.id === 'comp.arm01' ? -Math.PI / 2 : c.id === 'comp.segment02' ? 0.42 : 1.25;
-    const rr = R * (1.52 + c.drift * 1.7);
-    const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr * squish;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.12 + c.drift * 4.2);
-    ctx.fillStyle = '#8ca3b9'; ctx.fillRect(-16, -5, 32, 10);
-    ctx.fillStyle = 'rgba(230,242,252,0.5)'; ctx.fillRect(-16, -5, 32, 2);
-    ctx.fillStyle = '#1b2733'; ctx.fillRect(-3, -5, 6, 10);
+  // Persistent component identity carries each object through detached transit and final placement.
+  for (const component of state.components) {
+    if (!['detached', 'transit'].includes(component.phase)) continue;
+    const isArm = component.id === 'comp.arm01';
+    const isSegment = component.id === 'comp.segment02';
+    const isHydro = component.id === 'comp.hydro_rack';
+    const baseAngle = isArm ? -Math.PI / 2 : isSegment ? 0.42 : isHydro ? 1.25 : -0.25;
+    const rr = R * (1.43 + component.drift * 0.24);
+    const x = cx + Math.cos(baseAngle) * rr, y = cy + Math.sin(baseAngle) * rr * squish;
+    const size = isArm ? 1.45 : isHydro ? 0.84 : 1;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.12 + component.drift * 4.2);
+    ctx.fillStyle = '#8ca3b9'; ctx.fillRect(-16 * size, -5 * size, 32 * size, 10 * size);
+    ctx.fillStyle = 'rgba(230,242,252,0.5)'; ctx.fillRect(-16 * size, -5 * size, 32 * size, 2 * size);
+    ctx.fillStyle = '#1b2733'; ctx.fillRect(-3 * size, -5 * size, 6 * size, 10 * size);
     ctx.restore();
     if (!reduced) { ctx.fillStyle = 'rgba(255,220,150,0.9)'; ctx.fillRect(x - 1, y - 1, 2, 2); }
   }
-
   // landmarks
   if (state.landmarks.heshVisible) {
     // Hesh — the same small EVA figure held sunward beyond the severed relay.
@@ -272,8 +289,6 @@ export function drawStationExterior(ctx, w, h, state, t, reduced, camera = {}) {
     if (u >= 1) { ctx.fillStyle = '#ffd9a0'; ctx.fillRect(x - 2, y - 1, 4, 2); } // collar kiss
   }
 
-  ctx.restore();
-
   // Tiger backlit silhouette (finale)
   if (state.tiger.backlit) drawTiger(ctx, w * 0.60, h * 0.30, Math.min(w, h) * 0.17, t);
   vignette(ctx, w, h, 0.5);
@@ -283,7 +298,6 @@ export function drawStationExterior(ctx, w, h, state, t, reduced, camera = {}) {
 
 export function drawTiger(ctx, cx, cy, s, t) {
   ctx.save(); ctx.translate(cx, cy);
-  ctx.translate(Math.sin(t * 0.4) * s * 0.02, 0);
   const body = '#04060c';
   // rear torso + hips
   ctx.fillStyle = body;
@@ -383,7 +397,7 @@ function lightCone(ctx, x, y, w2, h2, alpha) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y); ctx.lineTo(x + w2, y + h2); ctx.lineTo(x - w2, y + h2); ctx.closePath(); ctx.fill();
 }
 
-export function drawInterior(ctx, w, h, state, t, reduced) {
+export function drawInterior(ctx, w, h, state, t, reduced, lastShift = {}) {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, '#171f2a'); g.addColorStop(0.55, '#24313f'); g.addColorStop(1, '#0d141d');
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
@@ -438,8 +452,12 @@ export function drawInterior(ctx, w, h, state, t, reduced) {
   drawCrew(ctx, w * 0.115, h * 0.63, 27, { suit: '#3a5a48' });
   ctx.fillStyle = '#274035'; ctx.fillRect(w * 0.045, h * 0.5, w * 0.03, h * 0.2); ctx.fillStyle = '#4caf7d'; ctx.fillRect(w * 0.05, h * 0.52, w * 0.02, 3); ctx.fillRect(w * 0.05, h * 0.58, w * 0.02, 3);
 
-  // foreground: linked task — the cart and Rin
-  const cartX = w * (0.24 + clamp01((state.t - 8) / 6) * 0.18);
+  // foreground: linked task — the cart and Rin. Last Shift can place this same
+  // persistent prop at a normalized route coordinate without changing world state.
+  const cartFactor = Number.isFinite(lastShift.cartXFactor)
+    ? clamp01(lastShift.cartXFactor)
+    : 0.24 + clamp01((state.t - 8) / 6) * 0.18;
+  const cartX = w * cartFactor;
   drawCart(ctx, cartX, h * 0.76, 46, state.props.cartCasterPresent, t);
   drawCrew(ctx, cartX + 46, h * 0.70, 42, { suit: '#7a5a3a', tool: state.props.toolWithRin, mug: state.props.mugWithCrew });
   // mug handoff arc (life chapter 10-14s): crew2 passes mug to Rin
@@ -454,7 +472,7 @@ function lerpNum(a, b, u) { return a + (b - a) * u; }
 
 // ---------- hydroponics ----------
 
-export function drawHydro(ctx, w, h, state, t, reduced) {
+export function drawHydro(ctx, w, h, state, t, reduced, options = {}) {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, '#0f1c15'); g.addColorStop(0.6, '#17251d'); g.addColorStop(1, '#080f0b');
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
@@ -464,8 +482,42 @@ export function drawHydro(ctx, w, h, state, t, reduced) {
   // grow rack (persistent comp.hydro_rack)
   const rup = state.hydroRack.rupture; // 0 intact
   const ruptured = rup > 0;
-  const rackX = w * 0.10, rackY = h * 0.24, rackW = w * 0.5, rackH = h * 0.56;
+  // After the breach, the same rack ID shears free and travels toward the pressure door.
+  const rackDrift = options.matchCamera ? 0 : clamp01(state.hydroRack.drift);
+  const rackX = w * (0.10 + rackDrift * 0.14), rackY = h * (0.24 + rackDrift * 0.05);
+  const rackW = w * (0.50 - rackDrift * 0.07), rackH = h * (0.56 - rackDrift * 0.05);
   panel(ctx, rackX, rackY, rackW, rackH, '#213a2d', '#121f17');
+  // The same feed manifold and emitters remain in frame. Before the cut they
+  // pulse through a deterministic irrigation cycle; after the rupture the severed
+  // feed and dead pump lamps explain why no water reaches the same planted rack.
+  const manifoldY = rackY - h * 0.022;
+  const manifoldCutX = rackX + rackW * 0.84;
+  ctx.lineCap = 'round'; ctx.lineWidth = 5;
+  ctx.strokeStyle = ruptured ? '#29342d' : '#49664f';
+  ctx.beginPath(); ctx.moveTo(rackX + 3, manifoldY); ctx.lineTo(rackX + rackW - 3, manifoldY); ctx.stroke();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = ruptured ? '#4b5549' : 'rgba(150,215,170,0.68)';
+  ctx.beginPath(); ctx.moveTo(rackX + 3, manifoldY - 1); ctx.lineTo(manifoldCutX - (ruptured ? 8 : 0), manifoldY - 1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(manifoldCutX + (ruptured ? 8 : 0), manifoldY - 1); ctx.lineTo(rackX + rackW - 3, manifoldY - 1); ctx.stroke();
+  if (ruptured) {
+    ctx.strokeStyle = 'rgba(255,166,100,0.9)'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(manifoldCutX - 6, manifoldY - 6); ctx.lineTo(manifoldCutX + 2, manifoldY + 1); ctx.lineTo(manifoldCutX - 3, manifoldY + 6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(manifoldCutX + 7, manifoldY - 5); ctx.lineTo(manifoldCutX + 1, manifoldY + 1); ctx.lineTo(manifoldCutX + 6, manifoldY + 5); ctx.stroke();
+  }
+  for (let c = 0; c < 4; c++) {
+    const nozzleX = rackX + rackW * (0.145 + c * 0.235);
+    ctx.strokeStyle = ruptured ? '#3a443b' : '#57715d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(nozzleX, manifoldY); ctx.lineTo(nozzleX, rackY + rackH * 0.035); ctx.stroke();
+    ctx.fillStyle = ruptured ? '#465044' : '#8fcba0';
+    ctx.beginPath(); ctx.arc(nozzleX, rackY + rackH * 0.035, 2.3, 0, Math.PI * 2); ctx.fill();
+    if (!reduced && state.lights.hydroPumps && rup === 0) {
+      const cycle = (t * 0.72 + c * 0.23) % 1;
+      const dropY = rackY + rackH * (0.07 + cycle * 0.14);
+      ctx.strokeStyle = 'rgba(126,225,198,0.68)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(nozzleX, rackY + rackH * 0.055); ctx.lineTo(nozzleX, dropY); ctx.stroke();
+      ctx.fillStyle = '#a3f1dc'; ctx.beginPath(); ctx.ellipse(nozzleX, dropY, 1.8, 3.1, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   // shelving rails
   ctx.strokeStyle = 'rgba(120,190,150,0.25)'; ctx.lineWidth = 1.5;
   for (let r = 0; r <= 3; r++) { ctx.beginPath(); ctx.moveTo(rackX + 4, rackY + rackH * (r / 3)); ctx.lineTo(rackX + rackW - 4, rackY + rackH * (r / 3)); ctx.stroke(); }
@@ -709,7 +761,7 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
   g.addColorStop(0, '#0a1018'); g.addColorStop(1, '#141d28');
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 
-  const bays = 3;
+  const bays = GEOMETRY.observationBays;
   const baysGeom = [];
   for (let b = 0; b < bays; b++) {
     const bw = w * 0.26, bh = h * 0.5;
@@ -760,10 +812,11 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
   for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(w * (0.05 + i * 0.082), h * 0.84); ctx.lineTo(w * (0.05 + i * 0.082) - 6, h); ctx.stroke(); }
   ctx.strokeStyle = 'rgba(150,185,215,0.14)'; ctx.beginPath(); ctx.moveTo(0, h * 0.9); ctx.lineTo(w, h * 0.9); ctx.stroke();
 
-  if (state.finale.hands || state.finale.returnHands) {
+  const closeBeat = state.finale.hands || state.finale.returnHands || state.finale.exterior;
+  if (closeBeat) {
     if (inspectionCamera) drawSurvivor(ctx, w * 0.5, h * 0.80, 'watch');
     else drawSurvivorClose(ctx, w, h);
-    // surviving strip light — what lets the watcher keep watching
+    // The same surviving strip light remains visible through the crossing.
     ctx.fillStyle = 'rgba(255,233,184,0.28)'; ctx.fillRect(w * 0.18, h * 0.815, w * 0.64, 10);
     ctx.fillStyle = '#ffe9b8'; ctx.fillRect(w * 0.18, h * 0.825, w * 0.64, 3);
   } else {
@@ -782,6 +835,30 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
     }
   }
   vignette(ctx, w, h, 0.5);
+}
+
+// The final camera literally leaves the center Chapel bay: the exterior replaces
+// the glass aperture and the reveal expands until the room is behind the lens.
+export function drawViewportCrossing(ctx, w, h, state, t, reduced, progress, exteriorView = {}) {
+  const p = clamp01(progress);
+  drawChapel(ctx, w, h, state, t, reduced);
+
+  const left0 = w * 0.402, top0 = h * 0.102;
+  const right0 = w * 0.662, bottom0 = h * 0.602;
+  const left = lerpNum(left0, 0, p), right = lerpNum(right0, w, p);
+  const top = lerpNum(top0, 0, p), bottom = lerpNum(bottom0, h, p);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
+  drawStationExterior(ctx, w, h, state, t, reduced, { centerX: 0.40, ...exteriorView });
+  ctx.restore();
+
+  if (p < 0.985) {
+    const inset = 5 + (1 - p) * 13;
+    ctx.save(); ctx.globalAlpha = (1 - p) * 0.78;
+    ctx.strokeStyle = 'rgba(199,222,240,0.88)'; ctx.lineWidth = Math.max(1, 8 * (1 - p));
+    ctx.strokeRect(left + inset, top + inset, right - left - inset * 2, bottom - top - inset * 2);
+    ctx.restore();
+  }
 }
 
 // ---------- M3 viewport lane ----------
@@ -829,29 +906,28 @@ export function drawBloom(ctx, w, h, state, t, reduced) {
   const R = Math.min(w, h) * 0.285;
   const squash = 0.44;
 
-  // Meridian's continuous ring is still recognizable inside the unfolding form.
+  // Meridian's geometry-locked ring remains recognizable inside the unfolding form.
+  const armCount = GEOMETRY.initialDockingArms;
+  const ringOuter = 1;
+  const ringInner = ringOuter * (1 - (2 * GEOMETRY.ringRadialThicknessKm) / GEOMETRY.ringDiameterKm);
   ctx.save(); ctx.translate(cx, cy); ctx.scale(1, squash);
-  const ring = ctx.createRadialGradient(0, 0, R * 0.82, 0, 0, R * 1.08);
+  const ring = ctx.createRadialGradient(0, 0, R * ringInner, 0, 0, R * ringOuter);
   ring.addColorStop(0, '#18222f'); ring.addColorStop(0.3, '#7890a6'); ring.addColorStop(0.52, '#a9bfd2'); ring.addColorStop(0.74, '#4b5e72'); ring.addColorStop(1, '#17212d');
   ctx.fillStyle = ring;
-  ctx.beginPath(); ctx.arc(0, 0, R * 1.08, 0, Math.PI * 2); ctx.arc(0, 0, R * 0.82, 0, Math.PI * 2); ctx.fill('evenodd');
+  ctx.beginPath(); ctx.arc(0, 0, R * ringOuter, 0, Math.PI * 2); ctx.arc(0, 0, R * ringInner, 0, Math.PI * 2); ctx.fill('evenodd');
   ctx.strokeStyle = 'rgba(14,22,32,0.66)'; ctx.lineWidth = 2;
-  for (let i = 0; i < 36; i++) {
-    const a = i * Math.PI * 2 / 36;
-    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * 0.84, Math.sin(a) * R * 0.84); ctx.lineTo(Math.cos(a) * R * 1.06, Math.sin(a) * R * 1.06); ctx.stroke();
+  for (let i = 0; i < armCount * 3; i++) {
+    const a = i * Math.PI * 2 / (armCount * 3);
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * (ringInner + 0.02), Math.sin(a) * R * (ringInner + 0.02)); ctx.lineTo(Math.cos(a) * R * (ringOuter - 0.01), Math.sin(a) * R * (ringOuter - 0.01)); ctx.stroke();
   }
   ctx.restore();
 
   // Twelve structural petals open from the ring. Three are the same tracked pieces,
-  // carried forward by ID rather than duplicated or silently replaced.
-  const tracked = {
-    0: state.components.find(c => c.id === 'comp.arm01'),
-    2: state.components.find(c => c.id === 'comp.segment02'),
-    7: state.components.find(c => c.id === 'comp.hydro_rack'),
-  };
-  for (let i = 0; i < 12; i++) {
-    const a = i * Math.PI * 2 / 12 - Math.PI / 2 + ease * 0.18;
-    const component = tracked[i];
+  // placed at their persistent radial-bloom sector by ID.
+  const tracked = new Map(state.components.map((component) => [component.placementSector, component]));
+  for (let i = 0; i < armCount; i++) {
+    const a = i * Math.PI * 2 / armCount - Math.PI / 2 + ease * 0.18;
+    const component = tracked.get(i);
     const drift = component?.drift || 0;
     const rootR = R * (0.88 + (component ? drift * 0.08 : 0));
     const len = R * (0.28 + ease * 1.05 + drift * 0.22);
@@ -877,13 +953,16 @@ export function drawBloom(ctx, w, h, state, t, reduced) {
     ctx.restore();
   }
 
-  // Spire and lower spine remain the fixed axis of the station.
+  // Spire and lower spine keep their geometry-locked asymmetry in the final form.
+  const radiusKm = GEOMETRY.ringDiameterKm / 2;
+  const upperTip = R * GEOMETRY.spireAboveRingKm / radiusKm;
+  const lowerTip = R * GEOMETRY.spineBelowRingKm / radiusKm;
   const spine = ctx.createLinearGradient(cx - 5, 0, cx + 5, 0);
   spine.addColorStop(0, '#293a4a'); spine.addColorStop(0.45, '#c1d4e5'); spine.addColorStop(1, '#1b2734');
   ctx.strokeStyle = spine; ctx.lineWidth = 7; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(cx, cy - Math.min(w, h) * 0.48); ctx.lineTo(cx, cy + Math.min(w, h) * 0.48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - upperTip); ctx.lineTo(cx, cy + lowerTip); ctx.stroke();
   ctx.strokeStyle = 'rgba(220,239,255,0.48)'; ctx.lineWidth = 1.4;
-  ctx.beginPath(); ctx.moveTo(cx - 1.5, cy - Math.min(w, h) * 0.46); ctx.lineTo(cx - 1.5, cy + Math.min(w, h) * 0.46); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 1.5, cy - upperTip + R * 0.03); ctx.lineTo(cx - 1.5, cy + lowerTip - R * 0.03); ctx.stroke();
 
   // Tiger stays backlit by Virgil at the center: still, deliberate, never the final image.
   drawTiger(ctx, cx, cy - Math.min(w, h) * 0.025, Math.min(w, h) * 0.205, t);
@@ -895,18 +974,38 @@ export function drawBloom(ctx, w, h, state, t, reduced) {
 
 // ---------- master dispatch ----------
 
-const CAM_SCENE = { docking: 'exterior', hydro: 'hydro', chapel: 'chapel' };
 function renderCam(ctx, w, h, state, cam, reduced) {
-  const scene = CAM_SCENE[cam] || 'exterior';
-  if (scene === 'exterior') {
-    const camera = CAMERAS.docking, zoom = camera.zoom || 1;
-    const fx = w * camera.centerX, fy = h * camera.focusY;
-    ctx.save(); ctx.translate(fx * (1 - zoom), fy * (1 - zoom)); ctx.scale(zoom, zoom);
-    drawStationExterior(ctx, w, h, state, state.t, reduced, { centerX: camera.centerX, rotation: camera.rotation });
+  const camera = CAMERAS[cam] || CAMERAS.docking;
+  if (camera.scene === 'exterior') {
+    const zoom = Math.max(1, camera.zoom || 1);
+    const minFocus = Math.min(0.5, 0.5 / zoom + 0.003);
+    const maxFocus = 1 - minFocus;
+    const fx = w * Math.max(minFocus, Math.min(maxFocus, camera.centerX));
+    const fy = h * Math.max(minFocus, Math.min(maxFocus, camera.focusY));
+    ctx.save(); ctx.translate(fx, fy); ctx.rotate(camera.rotation || 0); ctx.scale(zoom, zoom); ctx.translate(-fx, -fy);
+    drawStationExterior(ctx, w, h, state, state.t, reduced, { centerX: camera.centerX });
     ctx.restore();
+  } else if (camera.scene === 'hydro') {
+    drawHydro(ctx, w, h, state, state.t, reduced);
+  } else {
+    drawChapel(ctx, w, h, state, state.t, reduced, true);
   }
-  else if (scene === 'hydro') drawHydro(ctx, w, h, state, state.t, reduced);
-  else drawChapel(ctx, w, h, state, state.t, reduced, true);
+}
+
+function applyFilmCamera(ctx, w, h, camera) {
+  if (!camera) return;
+  const zoom = Math.max(1, camera.zoom || 1); // never reveal unpainted edges on a pull-back
+  if (zoom === 1 && !camera.roll) return;
+  // Keep enough overscan on every edge after a pan/zoom. Focus is a target, not
+  // permission for the camera to expose empty pixels outside the rendered plate.
+  const minFocus = Math.min(0.5, 0.5 / zoom + 0.003);
+  const maxFocus = 1 - minFocus;
+  const fx = w * Math.max(minFocus, Math.min(maxFocus, camera.focusX ?? 0.5));
+  const fy = h * Math.max(minFocus, Math.min(maxFocus, camera.focusY ?? 0.5));
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(camera.roll || 0);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-fx, -fy);
 }
 
 export function renderScene(ctx, w, h, state, opts = {}) {
@@ -933,24 +1032,26 @@ export function renderScene(ctx, w, h, state, opts = {}) {
     ctx.fillStyle = 'rgba(232,238,244,0.75)'; ctx.fillRect(panelW - 1, 0, 2, h);
     return;
   }
-  renderSingle(ctx, w, h, state, reduced);
+  const shot = opts.shot || shotAt(state.t);
+  ctx.save();
+  applyFilmCamera(ctx, w, h, opts.camera || shot.camera);
+  renderSingle(ctx, w, h, state, reduced, shot);
+  ctx.restore();
 }
 
-function renderSingle(ctx, w, h, state, reduced) {
+function renderSingle(ctx, w, h, state, reduced, shot) {
   const t = state.t;
-  if (t < 8) drawStationExterior(ctx, w, h, state, t, reduced);
-  else if (t < 14) drawInterior(ctx, w, h, state, t, reduced);
-  else if (t < 20) drawHydro(ctx, w, h, state, t, reduced);
-  else if (t < 30) drawChapel(ctx, w, h, state, t, reduced);
-  else if (t < 34) drawStationExterior(ctx, w, h, state, t, reduced);
-  else if (t < 38) drawInterior(ctx, w, h, state, t, reduced); // inner seal, lost route, damaged cart
-  else if (t < 50) drawStationExterior(ctx, w, h, state, t, reduced);
-  else if (t < 60) drawViewportLane(ctx, w, h, state, t, reduced);
-  else if (t < 70) drawHydro(ctx, w, h, state, t, reduced);
-  else if (t < 80) drawReliquary(ctx, w, h, state, t, reduced);
-  else if (state.finale.exterior) drawStationExterior(ctx, w, h, state, t, reduced);
-  else if (state.finale.bloom) drawBloom(ctx, w, h, state, t, reduced);
-  else drawChapel(ctx, w, h, state, t, reduced);
+  switch (shot.scene) {
+    case 'exterior': drawStationExterior(ctx, w, h, state, t, reduced, shot.camera || {}); break;
+    case 'interior': drawInterior(ctx, w, h, state, t, reduced); break;
+    case 'hydro': drawHydro(ctx, w, h, state, t, reduced); break;
+    case 'chapel': drawChapel(ctx, w, h, state, t, reduced); break;
+    case 'viewport-lane': drawViewportLane(ctx, w, h, state, t, reduced); break;
+    case 'reliquary': drawReliquary(ctx, w, h, state, t, reduced); break;
+    case 'window-crossing': drawViewportCrossing(ctx, w, h, state, t, reduced, shot.progress, shot.camera || {}); break;
+    case 'bloom': drawBloom(ctx, w, h, state, t, reduced); break;
+    default: drawChapel(ctx, w, h, state, t, reduced); break;
+  }
 }
 
 export function letterbox(ctx, w, h) {

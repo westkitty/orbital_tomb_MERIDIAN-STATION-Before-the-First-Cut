@@ -1,7 +1,8 @@
 // Deterministic state tests — run: node --test tests/state.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stateAt, stateHash, chapterAt, DURATION, CAMERAS, IDS, isMonotonic } from '../src/sim.js';
+import { stateAt, stateHash, chapterAt, DURATION, GEOMETRY, IDS, isMonotonic } from '../src/sim.js';
+import { CAMERAS, MATCH_CUTS, shotAt, shotCount } from '../src/cameras.js';
 
 test('runtime is exactly 90s with 30/60 split', () => {
   assert.equal(DURATION, 90);
@@ -24,6 +25,14 @@ test('12 intact arms at start, 11 after M1, never regrows', () => {
   assert.equal(stateAt(29.9).armsIntact, 12);
   assert.equal(stateAt(30).armsIntact, 11);
   assert.equal(stateAt(90).armsIntact, 11);
+});
+
+test('locked station dimensions and observation-bay geometry are explicit', () => {
+  assert.deepEqual(GEOMETRY, {
+    ringDiameterKm: 8.7, ringRadialThicknessKm: 1.3,
+    spireAboveRingKm: 10.4, spineBelowRingKm: 6.9,
+    initialDockingArms: 12, observationBays: 3, panesPerObservationBay: 2,
+  });
 });
 
 test('no damage reversal in forward play (monotonic scars)', () => {
@@ -68,11 +77,24 @@ test('persistent IDs are stable and exposed for every world-entity category', ()
   assert.ok(Object.isFrozen(IDS) && Object.values(IDS).every(Object.isFrozen));
 });
 
-test('three final reused component IDs present in bloom', () => {
-  const s = stateAt(88);
-  const ids = s.components.map(c => c.id).sort();
-  assert.deepEqual(ids, ['comp.arm01', 'comp.hydro_rack', 'comp.segment02']);
-  assert.ok(s.components.every(c => c.phase === 'bloom'));
+test('three persistent components progress from attachment through transit to named bloom slots', () => {
+  const component = (time, id) => stateAt(time).components.find((item) => item.id === id);
+  const paths = [
+    ['comp.arm01', [[0, 'intact'], [30, 'peeling'], [34, 'detached'], [40, 'transit'], [86, 'placed']], 0],
+    ['comp.segment02', [[39.9, 'intact'], [40, 'peeling'], [44, 'detached'], [50, 'transit'], [86, 'placed']], 2],
+    ['comp.hydro_rack', [[59.9, 'tended'], [60, 'rupturing'], [64, 'detached'], [70, 'transit'], [86, 'placed']], 7],
+  ];
+  for (const [id, phases, placementSector] of paths) {
+    for (const [time, phase] of phases) assert.equal(component(time, id).phase, phase, `${id} at ${time}s`);
+    for (const time of [0, 30, 40, 60, 70, 86, 90]) {
+      const item = component(time, id);
+      assert.equal(item.destination, 'radial-bloom');
+      assert.equal(item.placementSector, placementSector);
+    }
+  }
+  const final = stateAt(90).components;
+  assert.deepEqual(final.map((item) => item.id).sort(), ['comp.arm01', 'comp.hydro_rack', 'comp.segment02']);
+  assert.ok(final.every((item) => item.phase === 'placed' && item.drift === 1));
 });
 
 test('cause and effect: collar locks, seal reroutes, relay kills only its fixtures', () => {
@@ -108,8 +130,38 @@ test('finale sequence: hands -> exterior -> bloom -> same hands', () => {
   assert.equal(stateAt(89).tiger.backlit, true);
 });
 
-test('three locked cameras defined', () => {
+test('three locked comparison cameras and 22 authored film shots are separate from world state', () => {
   assert.deepEqual(Object.keys(CAMERAS).sort(), ['chapel', 'docking', 'hydro']);
+  assert.equal(shotCount(), 22);
+  for (const t of [0, 2, 8, 14, 20, 28, 30, 34, 38, 39.2, 40, 42, 50, 58, 60, 64, 70, 80, 83, 84.6, 86, 88.5, 90]) {
+    const shot = shotAt(t);
+    assert.ok(shot.id && shot.scene);
+    assert.ok(shot.camera.zoom > 0 && Number.isFinite(shot.camera.focusX));
+  }
+  assert.equal(shotAt(0).scene, 'exterior');
+  assert.equal(shotAt(80).scene, 'chapel');
+  assert.equal(shotAt(83).scene, 'window-crossing');
+  assert.equal(shotAt(84.6).scene, 'exterior');
+  assert.equal(shotAt(86).scene, 'bloom');
+  assert.equal(shotAt(88.5).scene, 'chapel');
+});
+
+test('three authored damage boundaries are actual same-camera match cuts', () => {
+  assert.deepEqual(MATCH_CUTS.map((cut) => cut.at), [30, 40, 60]);
+  for (const cut of MATCH_CUTS) {
+    const intact = shotAt(cut.at - 0.001);
+    const damaged = shotAt(cut.at);
+    assert.equal(intact.id, cut.intactShot);
+    assert.equal(damaged.id, cut.damageShot);
+    assert.equal(intact.scene, damaged.scene, cut.system);
+    assert.deepEqual(intact.camera, damaged.camera, `${cut.system} camera changes at ${cut.at}s`);
+  }
+  assert.equal(stateAt(29.9).arm01.phase, 'intact');
+  assert.equal(stateAt(30).arm01.phase, 'peeling');
+  assert.equal(stateAt(39.9).segment02.phase, 'intact');
+  assert.equal(stateAt(40).segment02.phase, 'peeling');
+  assert.equal(stateAt(59.9).hydroRack.phase, 'tended');
+  assert.equal(stateAt(60).hydroRack.phase, 'rupturing');
 });
 
 test('isMonotonic helper holds across full timeline and damage never reverses', () => {

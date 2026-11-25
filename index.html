@@ -2,87 +2,178 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#060a0f">
 <title>Meridian Station — Before the First Cut</title>
-<meta name="description" content="A 90-second authored cut aboard Meridian Station: 30 seconds of working life, then six months of quiet dismantling. No speech, no music.">
+<meta name="description" content="A deterministic 90-second Meridian Station film study: thirty seconds of working life, then six months of quiet dismantling.">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./src/style.css">
 </head>
 <body class="film">
-<a class="skip" href="#filmbar">Skip to controls</a>
+<a class="skip" href="#filmbar">Skip to playback controls</a>
 <div id="app">
-  <header>
-    <h1>MERIDIAN STATION</h1>
-    <span class="sub">Before the First Cut · 90s · no speech / no music</span>
+  <header class="topbar">
+    <a class="identity" href="#film" aria-label="Meridian Station, return to film">
+      <span class="identity-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="identity-copy">
+        <strong>MERIDIAN STATION</strong>
+        <small>BEFORE THE FIRST CUT <span>·</span> 90 SECOND STUDY</small>
+      </span>
+    </a>
+    <div class="orbit-lock" aria-label="Location: high orbit over Virgil">
+      <span class="orbit-dot" aria-hidden="true"></span>
+      <span>VIRGIL ORBIT</span>
+      <span class="orbit-divider">/</span>
+      <span>PASSIVE OBSERVATION</span>
+    </div>
     <nav class="mode-tabs" aria-label="Viewing mode">
-      <button id="modeFilm" aria-pressed="true">Film</button>
-      <button id="modeInspect" aria-pressed="false">Inspect</button>
+      <button id="modeFilm" type="button" aria-pressed="true">Film</button>
+      <button id="modeInspect" type="button" aria-pressed="false">Inspect</button>
+      <button id="modeLastShift" type="button" aria-pressed="false">The Last Shift</button>
     </nav>
   </header>
   <main>
-    <section id="stage" aria-label="Film stage">
-      <canvas id="film" aria-label="Meridian Station film canvas"></canvas>
+    <section id="stage" aria-label="Film image">
+      <canvas id="film" tabindex="0" aria-label="Meridian Station film canvas. Click or press Space to play or pause."></canvas>
       <div id="hud" aria-hidden="true"></div>
     </section>
-    <aside id="panel" aria-label="Inspection panel">
-      <section>
-        <h2>Chapters</h2>
-        <div class="chapters">
-          <button data-start="0" data-end="8">Life — Docking</button>
-          <button data-start="8" data-end="14">Life — Habitat</button>
-          <button data-start="14" data-end="20">Life — Hydroponics</button>
-          <button data-start="20" data-end="30">Life — Observation</button>
-          <button data-start="30" data-end="40">M1 First Arm</button>
-          <button data-start="40" data-end="50">M2 Ring &amp; Hesh</button>
-          <button data-start="50" data-end="60">M3 North Vent</button>
-          <button data-start="60" data-end="70">M4 Hydroponics</button>
-          <button data-start="70" data-end="80">M5 Reliquary</button>
-          <button data-start="80" data-end="90">M6 The Bloom</button>
+    <aside id="panel" aria-label="Inspection console">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">OBSERVATION CONSOLE <span>·</span> READ ONLY</p>
+          <h2>Inspect the cut</h2>
+        </div>
+        <span class="console-led" aria-hidden="true"></span>
+      </div>
+      <p class="panel-note">One timeline. Persistent systems. Your viewing tools cannot alter what happens.</p>
+      <section class="panel-section">
+        <div class="section-title"><h3>Chapters</h3><span>00:00 — 01:30</span></div>
+        <div class="chapters" aria-label="Jump to chapter">
+          <button type="button" data-start="0" data-end="8"><span class="chapter-time">00:00</span><span>Docking shift</span></button>
+          <button type="button" data-start="8" data-end="14"><span class="chapter-time">00:08</span><span>Transit &amp; habitat</span></button>
+          <button type="button" data-start="14" data-end="20"><span class="chapter-time">00:14</span><span>Hydroponics</span></button>
+          <button type="button" data-start="20" data-end="30"><span class="chapter-time">00:20</span><span>Observation watch</span></button>
+          <button type="button" data-start="30" data-end="40"><span class="chapter-time">00:30</span><span>Month 1 · Arm</span></button>
+          <button type="button" data-start="40" data-end="50"><span class="chapter-time">00:40</span><span>Month 2 · Relay</span></button>
+          <button type="button" data-start="50" data-end="60"><span class="chapter-time">00:50</span><span>Month 3 · North</span></button>
+          <button type="button" data-start="60" data-end="70"><span class="chapter-time">01:00</span><span>Month 4 · Hydro</span></button>
+          <button type="button" data-start="70" data-end="80"><span class="chapter-time">01:10</span><span>Month 5 · Reliquary</span></button>
+          <button type="button" data-start="80" data-end="90"><span class="chapter-time">01:20</span><span>Month 6 · Bloom</span></button>
         </div>
       </section>
-      <section>
-        <h2>Physical systems</h2>
-        <label for="system">Jump to system</label>
+      <section class="panel-section">
+        <div class="section-title"><h3>Physical system</h3><span>JUMP TO</span></div>
+        <label class="sr-only" for="system">Select a physical system</label>
         <select id="system">
           <option value="docking">Docking arms</option>
-          <option value="transit">Transit / pressure</option>
-          <option value="hydro">Hydroponics</option>
+          <option value="transit">Transit / pressure seal</option>
+          <option value="hydro">Hydroponic spine</option>
           <option value="chapel">Observation chapel</option>
-          <option value="relay">Comms relay</option>
-          <option value="cryo">Cryo vault</option>
-          <option value="antenna">Antenna grid</option>
+          <option value="relay">Communications relay</option>
+          <option value="cryo">Cryogenic vault</option>
+          <option value="antenna">Antenna lattice</option>
           <option value="sail">Thermal sails</option>
         </select>
       </section>
-      <section>
-        <h2>Before / after</h2>
-        <label><input type="checkbox" id="beforeAfter"> Side-by-side: before (left) / after (right)</label>
-        <label for="baCamera">Camera</label>
+      <section class="panel-section compare-section">
+        <div class="section-title"><h3>Matched camera</h3><span>BEFORE / AFTER</span></div>
+        <label class="check-row"><input type="checkbox" id="beforeAfter"><span>Compare intact and changed state</span></label>
+        <label class="sr-only" for="baCamera">Choose a locked comparison camera</label>
         <select id="baCamera">
           <option value="docking">Docking socket</option>
-          <option value="hydro">Hydroponics</option>
+          <option value="hydro">Hydroponic bay</option>
           <option value="chapel">Observation room</option>
         </select>
       </section>
-      <section>
-        <h2>Accessibility &amp; sound</h2>
-        <label><input type="checkbox" id="reduced"> Reduced effects (fewer particles, lower pixel ratio)</label>
-        <label><input type="checkbox" id="sound"> Machinery ambience (optional, nonverbal)</label>
-        <p style="font-size:12px;color:var(--dim)">Keyboard: Space play/pause · ←/→ scrub 1s · 1–9 early chapters, 0 = Month 6 · F film · I inspect. Viewing tools never change story state.</p>
+      <section class="panel-section settings-section">
+        <div class="section-title"><h3>Experience</h3><span>LOCAL ONLY</span></div>
+        <label class="check-row"><input type="checkbox" id="reduced"><span>Reduced effects</span></label>
+        <label class="check-row"><input type="checkbox" id="sound"><span>Nonverbal machinery ambience</span></label>
+        <span id="soundStatus" class="status-note" role="status"></span>
       </section>
-      <section>
-        <h2>World state (read-only)</h2>
+      <section class="panel-section state-section">
+        <div class="section-title"><h3>World state</h3><span>DETERMINISTIC</span></div>
         <div id="stateOut" aria-live="off"></div>
       </section>
+      <p class="keyboard-note">SPACE play/pause <span>·</span> ← / → step <span>·</span> 1–9 / 0 chapters <span>·</span> F / I modes</p>
     </aside>
+    <section id="lastShift" class="last-shift" aria-labelledby="shiftTitle" hidden>
+      <div class="shift-image-frame">
+        <canvas id="shiftCanvas" tabindex="0" aria-label="The Last Shift comparison. The intact shift is on the left and the selected month is on the right on wide screens."></canvas>
+        <div id="shiftAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
+      </div>
+      <section class="shift-console" aria-label="The Last Shift controls">
+        <div class="shift-console-heading">
+          <p class="eyebrow">AFTER THE CUT <span>·</span> READ ONLY</p>
+          <h2 id="shiftTitle">The Last Shift</h2>
+          <p>One route, held against the months that changed it.</p>
+        </div>
+        <div class="shift-console-controls">
+          <fieldset class="shift-stages">
+            <legend>Compare a sightline</legend>
+            <button type="button" data-shift-stage="dock" aria-pressed="true">Dock / Transit</button>
+            <button type="button" data-shift-stage="hydro" aria-pressed="false">Hydroponics</button>
+            <button type="button" data-shift-stage="glass" aria-pressed="false">Observation Glass</button>
+          </fieldset>
+          <div class="shift-time-control">
+            <label for="shiftMonth">Recorded state <output id="shiftMonthLabel" for="shiftMonth">Month 1 · 00:38</output></label>
+            <input id="shiftMonth" type="range" min="0" max="6" step="1" value="1" aria-valuetext="Month 1">
+          </div>
+          <div class="shift-reveal-control">
+            <label for="shiftDivider">Pane divider</label>
+            <input id="shiftDivider" type="range" min="25" max="75" step="1" value="50" aria-label="Move the comparison divider">
+            <button id="shiftCompareMode" type="button" aria-pressed="true" hidden>Show intact view</button>
+          </div>
+          <div class="shift-captions" aria-hidden="true">
+            <span id="shiftIntactCaption">INTACT SHIFT · 00:14</span>
+            <span id="shiftMonthCaption">MONTH 1 · 00:38</span>
+          </div>
+          <p id="shiftReadout" class="sr-only"></p>
+        </div>
+        <div class="shift-console-actions">
+          <label class="check-row"><input type="checkbox" id="shiftSound"><span>Machinery ambience</span></label>
+          <button id="shiftReturn" type="button">Return to film</button>
+        </div>
+        <details id="shiftDetails" class="shift-details">
+          <summary>Read the physical changes</summary>
+          <p id="shiftExplanation">The view stays fixed. The world state comes from the same film simulation.</p>
+          <div id="shiftRouteDetails" class="shift-route-details" hidden>
+            <svg id="shiftRouteMap" viewBox="0 0 100 56" role="img" aria-labelledby="shiftRouteTitle shiftRouteDesc">
+              <title id="shiftRouteTitle">Dock to transit-ring route</title>
+              <desc id="shiftRouteDesc">A schematic of the original cart route and its service bypass around a sealed threshold.</desc>
+              <path id="shiftDirectPath" class="shift-route-direct" d=""></path>
+              <path id="shiftClosedPath" class="shift-route-sealed-line" d="" hidden></path>
+              <path id="shiftDockBranchPath" class="shift-route-direct shift-route-dock-branch" d=""></path>
+              <path id="shiftBypassPath" class="shift-route-bypass" d="" hidden></path>
+              <line id="shiftSealMark" class="shift-route-seal" x1="50" y1="29" x2="50" y2="29"></line>
+              <circle id="shiftDockNode" cx="41" cy="49" r="2.5"></circle>
+              <circle id="shiftRingNode" cx="90" cy="29" r="2.5"></circle>
+              <circle id="shiftCartNode" cx="10" cy="29" r="2"></circle>
+              <circle id="shiftBypassTrace" cx="10" cy="29" r="1.8" hidden></circle>
+              <text x="7" y="35">CORRIDOR</text>
+              <text x="34" y="54">DOCK ARM</text>
+              <text x="72" y="35">TRANSIT RING</text>
+              <text id="shiftBypassLabel" x="42" y="14" hidden>SERVICE BYPASS</text>
+              <text id="shiftSealLabel" x="47" y="26" hidden>SEALED</text>
+            </svg>
+            <p class="shift-route-key"><span class="route-key-open">Open route</span><span class="route-key-bypass">Service bypass</span><span class="route-key-sealed">Closed / unavailable</span></p>
+            <p class="shift-route-caveat">Normalized local-plan schematic shaped from a Blender first-slice clearance study, not a surveyed whole-station map. Its collision-ray samples do not verify Unreal transforms or player/capsule traversal; route states are reconstructed separately from the film simulation.</p>
+          </div>
+        </details>
+      </section>
+    </section>
   </main>
-  <footer id="filmbar">
-    <button id="play" aria-label="Play or pause">Pause</button>
-    <button id="restart">Restart</button>
-    <button id="back" aria-label="Back one second">−1s</button>
-    <button id="fwd" aria-label="Forward one second">+1s</button>
-    <span class="time" id="time">00:00.0 / 01:30</span>
+  <footer id="filmbar" aria-label="Playback controls">
+    <div class="transport">
+      <button id="play" type="button" aria-label="Pause film">Pause</button>
+      <button id="restart" type="button" aria-label="Restart film">Restart</button>
+      <button id="back" type="button" aria-label="Back one second">−1s</button>
+      <button id="fwd" type="button" aria-label="Forward one second">+1s</button>
+    </div>
+    <output class="time" id="time" aria-live="off">00:00.0 / 01:30</output>
+    <label class="sr-only" for="scrub">Scrub the 90-second film</label>
     <input type="range" id="scrub" min="0" max="90" step="0.1" value="0" aria-label="Scrub timeline">
+    <span class="footer-mark"><span class="orbit-dot" aria-hidden="true"></span> FIXED CUT <span>·</span> NO BRANCHING</span>
   </footer>
 </div>
 <script type="module" src="./src/app.js"></script>

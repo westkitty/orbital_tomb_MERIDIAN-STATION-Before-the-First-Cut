@@ -1,5 +1,5 @@
-// Browser-level test via jsdom (sandbox has no downloadable Chromium: CDN blocked).
-// Validates app wiring, controls, seeks, keyboard, subpath safety, zero console errors.
+// Player/UI wiring checks via jsdom; real Chromium interaction lives in tools/browser-smoke.mjs.
+// This suite validates controls, seeks, keyboard, subpath safety, and zero console errors.
 // Run: node --test tests/browser.test.mjs  (or: node tests/browser.test.mjs)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,11 +39,18 @@ async function boot(viewport = { width: 1280, height: 800 }) {
   // Load app module source manually (jsdom won't fetch file:// modules)
   const appSrc = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
   const simSrc = readFileSync(new URL('../src/sim.js', import.meta.url), 'utf8');
+  const cameraSrc = readFileSync(new URL('../src/cameras.js', import.meta.url), 'utf8');
   const renderSrc = readFileSync(new URL('../src/render.js', import.meta.url), 'utf8');
-  // Inline sim + render into a single module scope for jsdom eval
-  const simBody = simSrc.replace(/^export /gm, '').replace(/import .*from.*\n/, '');
-  const renderBody = renderSrc.replace(/^import .*from.*\n/gm, '').replace(/^export /gm, '');
-  const combined = simBody + '\n' + renderBody + '\n' + appSrc.replace(/^import .*from.*\n/gm, '');
+  const lastShiftSrc = readFileSync(new URL('../src/last-shift.js', import.meta.url), 'utf8');
+  const lastShiftRenderSrc = readFileSync(new URL('../src/last-shift-render.js', import.meta.url), 'utf8');
+  // Inline deterministic state, authored cameras, both renderers, and app for jsdom.
+  const stripImports = (source) => source.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"];\r?\n/gm, '');
+  const simBody = stripImports(simSrc).replace(/^export /gm, '');
+  const cameraBody = stripImports(cameraSrc).replace(/^export /gm, '');
+  const renderBody = stripImports(renderSrc).replace(/^export /gm, '');
+  const lastShiftBody = stripImports(lastShiftSrc).replace(/^export /gm, '');
+  const lastShiftRenderBody = stripImports(lastShiftRenderSrc).replace(/^export /gm, '');
+  const combined = simBody + '\n' + cameraBody + '\n' + renderBody + '\n' + lastShiftBody + '\n' + lastShiftRenderBody + '\n' + stripImports(appSrc);
   window.eval(combined);
   // drive a few frames
   for (let i = 0; i < 5 && rafCb; i++) { const cb = rafCb; rafCb = null; cb(1000 + i * 16); }
@@ -107,6 +114,23 @@ test('keyboard: space toggles play, arrows scrub, digits jump chapters', async (
   assert.equal(window.__meridian.t, 80);
 });
 
+test('shortcuts do not steal keystrokes from form controls or editable content', async () => {
+  const { window } = await boot();
+  window.document.getElementById('play').click(); // pause timeline
+  window.__meridian.seek(12);
+  const range = window.document.getElementById('scrub');
+  range.focus();
+  const playing = window.__meridian.playing;
+  range.dispatchEvent(new window.KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
+  range.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.equal(window.__meridian.playing, playing);
+  assert.equal(window.__meridian.t, 12);
+  const editable = window.document.createElement('div');
+  editable.contentEditable = 'true'; editable.tabIndex = 0; window.document.body.append(editable); editable.focus();
+  editable.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', bubbles: true }));
+  assert.equal(window.document.body.classList.contains('film'), true);
+});
+
 test('chapter buttons, system select, before/after do not throw', async () => {
   const { window, errors } = await boot();
   window.document.querySelector('.chapters button[data-start="80"]').click();
@@ -144,7 +168,81 @@ test('range scrubbing and canvas tap work at a tablet-sized emulated viewport', 
   const before = window.__meridian.playing;
   window.document.getElementById('film').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   assert.equal(window.__meridian.playing, !before);
-  assert.match(readFileSync(new URL('../src/style.css', import.meta.url), 'utf8'), /max-width:760px/);
+  assert.match(readFileSync(new URL('../src/style.css', import.meta.url), 'utf8'), /max-width: 900px/);
+});
+
+test('The Last Shift freezes and restores the playable film clock and state', async () => {
+  const { window, getRaf } = await boot({ width: 1280, height: 800 });
+  window.__meridian.seek(42.3);
+  const before = { t: window.__meridian.t, hash: window.__meridian.stateHash(42.3), playing: window.__meridian.playing };
+  window.document.getElementById('modeLastShift').click();
+  assert.equal(window.__meridian.mode, 'lastshift');
+  assert.equal(window.document.getElementById('lastShift').hidden, false, 'the after-film panel is revealed');
+  assert.equal(window.document.getElementById('modeLastShift').getAttribute('aria-pressed'), 'true');
+  assert.equal(window.__meridian.t, before.t);
+  assert.equal(window.__meridian.stateHash(window.__meridian.t), before.hash);
+  assert.equal(window.__meridian.playing, before.playing);
+  const frame = getRaf();
+  assert.ok(frame, 'Last Shift keeps its presentation frame loop');
+  frame(1080);
+  assert.equal(window.__meridian.t, before.t, 'the hidden film clock does not advance in the after-film experience');
+  assert.equal(window.__meridian.stateHash(window.__meridian.t), before.hash);
+  window.document.getElementById('shiftReturn').click();
+  const nextFrame = getRaf();
+  nextFrame(1096);
+  assert.equal(window.document.getElementById('lastShift').hidden, true, 'return hides the after-film panel');
+  assert.equal(window.__meridian.mode, 'film');
+  assert.equal(window.__meridian.playing, before.playing);
+  assert.ok(window.__meridian.t > before.t, 'film playback resumes from the exact saved frame');
+});
+
+test('Last Shift month and stage controls reconstruct real states and the narrow-layout toggle is accessible', async () => {
+  const { window } = await boot({ width: 768, height: 1024 });
+  window.__meridian.seek(51.25);
+  const savedTime = window.__meridian.t;
+  const savedHash = window.__meridian.stateHash(savedTime);
+  window.document.getElementById('modeLastShift').click();
+  assert.equal(window.document.getElementById('lastShift').hidden, false);
+  assert.equal(window.document.getElementById('shiftCompareMode').hidden, false);
+  assert.equal(window.document.getElementById('shiftDivider').disabled, true);
+
+  const routeDetails = window.document.getElementById('shiftDetails');
+  routeDetails.open = true;
+  routeDetails.dispatchEvent(new window.Event('toggle'));
+  assert.equal(window.document.getElementById('shiftRouteDetails').hidden, false);
+  assert.equal(window.document.getElementById('shiftClosedPath').hidden, false, 'M1 shows the closed continuation beyond the pressure seal');
+  assert.equal(window.document.getElementById('shiftBypassPath').hidden, false, 'M1 shows the separate surviving bypass');
+  assert.equal(window.document.getElementById('shiftDockBranchPath').classList.contains('unavailable'), true);
+
+  const month = window.document.getElementById('shiftMonth');
+  month.value = '0'; month.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(window.__meridian.lastShift.pair('dock', 0).monthZeroMatches, true);
+  assert.equal(window.document.getElementById('shiftSealMark').hidden, true, 'M0 leaves the route seal marker inactive');
+  assert.equal(window.document.getElementById('shiftClosedPath').hidden, true);
+  assert.equal(window.document.getElementById('shiftDockBranchPath').classList.contains('unavailable'), false);
+  window.document.querySelector('[data-shift-stage="hydro"]').click();
+  assert.equal(window.__meridian.lastShift.selection.stage, 'hydro');
+  assert.equal(window.__meridian.lastShift.selection.month, 4);
+  assert.equal(window.__meridian.lastShift.pair('hydro', 4).historicalState.t, 63.9);
+  window.document.querySelector('[data-shift-stage="glass"]').click();
+  assert.equal(window.__meridian.lastShift.selection.month, 3);
+  assert.equal(window.__meridian.lastShift.pair('glass', 3).historicalState.landmarks.maraInLane, true);
+  window.document.getElementById('shiftCompareMode').click();
+  assert.equal(window.__meridian.lastShift.selection.pane, 'intact');
+  assert.equal(window.__meridian.t, savedTime);
+  assert.equal(window.__meridian.stateHash(window.__meridian.t), savedHash);
+});
+
+test('Last Shift divider range and touch pointer keep a single normalized comparison', async () => {
+  const { window } = await boot({ width: 1280, height: 800 });
+  window.document.getElementById('modeLastShift').click();
+  const slider = window.document.getElementById('shiftDivider');
+  slider.value = '64'; slider.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(window.__meridian.lastShift.selection.divider, 0.64);
+  const canvas = window.document.getElementById('shiftCanvas');
+  canvas.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 819 }));
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 720 }));
+  assert.ok(window.__meridian.lastShift.selection.divider < 0.64, 'pointer-drag moves the divider without changing time');
 });
 
 test('every chapter boundary renders without throwing', async () => {
