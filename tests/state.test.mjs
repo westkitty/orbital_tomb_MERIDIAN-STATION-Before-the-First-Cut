@@ -1,8 +1,8 @@
 // Deterministic state tests — run: node --test tests/state.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stateAt, stateHash, chapterAt, DURATION, GEOMETRY, IDS, isMonotonic } from '../src/sim.js';
-import { CAMERAS, MATCH_CUTS, shotAt, shotCount } from '../src/cameras.js';
+import { stateAt, stateHash, chapterAt, DURATION, GEOMETRY, IDS, OBSERVATION_GLASS_TRACK, observationGlassCrossingAt, isMonotonic } from '../src/sim.js';
+import { CAMERAS, MATCH_CUTS, attentionCameraAt, shotAt, shotCount } from '../src/cameras.js';
 
 test('runtime is exactly 90s with 30/60 split', () => {
   assert.equal(DURATION, 90);
@@ -77,6 +77,46 @@ test('persistent IDs are stable and exposed for every world-entity category', ()
   assert.ok(Object.isFrozen(IDS) && Object.values(IDS).every(Object.isFrozen));
 });
 
+test('Mara and Rin recur on one observation-glass track with stable actors, wrench, and survivor attention', () => {
+  const openingStart = stateAt(20);
+  const openingMiddle = stateAt(24).actors.glassCrossing;
+  const openingEnd = stateAt(27.99).actors.glassCrossing;
+  const returnStart = stateAt(50);
+  const returnMiddle = stateAt(54).actors.glassCrossing;
+
+  assert.equal(observationGlassCrossingAt(19.999), null);
+  assert.equal(openingStart.actors.glassCrossing.passId, 'opening-pass');
+  assert.equal(openingStart.actors.glassCrossing.progress, 0);
+  assert.equal(openingMiddle.progress, 0.5);
+  assert.ok(openingEnd.progress < 1 && openingEnd.progress > 0.99);
+  assert.equal(stateAt(28).actors.glassCrossing, null);
+  assert.equal(returnStart.actors.glassCrossing.passId, 'return-pass');
+  assert.equal(returnStart.actors.glassCrossing.progress, 0);
+  assert.equal(returnMiddle.progress, 0.5);
+  assert.equal(stateAt(58).actors.glassCrossing, null);
+
+  assert.equal(openingMiddle.trackId, OBSERVATION_GLASS_TRACK.id);
+  assert.equal(returnMiddle.trackId, openingMiddle.trackId);
+  assert.equal(openingMiddle.glassId, 'door.chapel_glass');
+  assert.equal(openingMiddle.laneId, 'lane.observation.center-pane');
+  assert.equal(openingMiddle.depth, 'behind-glass');
+  assert.equal(openingMiddle.mara.id, 'actor.mara');
+  assert.equal(openingMiddle.rin.id, 'actor.rin');
+  assert.equal(openingMiddle.wrench.id, 'prop.tool_rin');
+  assert.equal(openingMiddle.wrench.ownerId, openingMiddle.rin.id);
+  assert.equal(returnMiddle.mara.id, openingMiddle.mara.id);
+  assert.equal(returnMiddle.rin.id, openingMiddle.rin.id);
+  assert.ok(Math.abs((openingMiddle.rin.x - openingMiddle.mara.x) - 0.42) < 1e-12);
+  assert.equal(stateAt(24).landmarks.maraInLane, true);
+  assert.equal(stateAt(24).landmarks.rinInLane, true);
+  assert.equal(stateAt(28).landmarks.maraInLane, false);
+  assert.equal(stateAt(20).actors.survivor.attention, 'working');
+  assert.equal(stateAt(26).actors.survivor.attention, 'noticing');
+  assert.equal(stateAt(28).actors.survivor.attention, 'quiet');
+  assert.equal(stateAt(50).actors.survivor.attention, 'watching');
+  assert.equal(stateAt(58).actors.survivor.attention, 'quiet');
+});
+
 test('three persistent components progress from attachment through transit to named bloom slots', () => {
   const component = (time, id) => stateAt(time).components.find((item) => item.id === id);
   const paths = [
@@ -130,9 +170,12 @@ test('finale sequence: hands -> exterior -> bloom -> same hands', () => {
   assert.equal(stateAt(89).tiger.backlit, true);
 });
 
-test('three locked comparison cameras and 22 authored film shots are separate from world state', () => {
+test('three locked comparison cameras and authored film shots are separate from world state', () => {
   assert.deepEqual(Object.keys(CAMERAS).sort(), ['chapel', 'docking', 'hydro']);
-  assert.equal(shotCount(), 22);
+  assert.equal(shotCount(), 20);
+  assert.equal(shotAt(30).id, 'arm01-peel');
+  assert.equal(shotAt(39.199).id, 'arm01-peel');
+  assert.equal(shotAt(39.2).id, 'm2-match-setup');
   for (const t of [0, 2, 8, 14, 20, 28, 30, 34, 38, 39.2, 40, 42, 50, 58, 60, 64, 70, 80, 83, 84.6, 86, 88.5, 90]) {
     const shot = shotAt(t);
     assert.ok(shot.id && shot.scene);
@@ -144,6 +187,22 @@ test('three locked comparison cameras and 22 authored film shots are separate fr
   assert.equal(shotAt(84.6).scene, 'exterior');
   assert.equal(shotAt(86).scene, 'bloom');
   assert.equal(shotAt(88.5).scene, 'chapel');
+});
+
+test('inspection A/B attention cameras are isolated from canonical film shots', () => {
+  for (const t of [0, 19.9, 28, 49.9, 58, 80, 90]) {
+    assert.deepEqual(attentionCameraAt(t, 'survivor-notices-first'), shotAt(t).camera);
+    assert.deepEqual(attentionCameraAt(t, 'audience-notices-first'), shotAt(t).camera);
+  }
+  const survivor = attentionCameraAt(25.7, 'survivor-notices-first');
+  const audience = attentionCameraAt(25.8, 'audience-notices-first');
+  assert.deepEqual(survivor, { zoom: 1.18, focusX: 0.5, focusY: 0.574, roll: 0 });
+  assert.deepEqual(audience, { zoom: 1.42, focusX: 0.53, focusY: 0.355, roll: 0 });
+  assert.notDeepEqual(survivor, audience);
+  assert.deepEqual(attentionCameraAt(27.7, 'survivor-notices-first'), shotAt(27.7).camera);
+  assert.deepEqual(attentionCameraAt(57.999, 'audience-notices-first'), attentionCameraAt(57.999, 'incumbent'));
+  assert.equal(shotAt(25.8).id, 'routine-watch');
+  assert.equal(shotAt(25.8).scene, 'chapel');
 });
 
 test('three authored damage boundaries are actual same-camera match cuts', () => {

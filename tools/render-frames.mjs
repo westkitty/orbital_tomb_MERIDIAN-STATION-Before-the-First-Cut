@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stateAt } from '../src/sim.js';
-import { CAMERAS } from '../src/cameras.js';
+import { CAMERAS, attentionCameraAt, shotAt } from '../src/cameras.js';
 import { renderScene } from '../src/render.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,6 +41,7 @@ const shots = [
   ['mid-00m44-hesh.png', 44, {}],
   ['mid-00m56-viewport-lane.png', 56, {}],
   ['match-m4-before-00m59.9.png', 59.9, {}],
+  ['mid-01m00-rin-service-cut.png', 60.5, {}],
   ['match-m4-after-01m03.9.png', 63.9, {}],
   ['mid-01m06-hydro-ruptured.png', 66, {}],
   ['mid-01m14-reliquary.png', 74, {}],
@@ -53,6 +54,18 @@ const shots = [
   ['final-01m29-return-hands.png', 89, {}],
 ];
 for (const [file, t, opts] of shots) await renderTo(file, stateAt(t), opts);
+
+const attentionReviewTime = 26;
+const attentionShot = shotAt(attentionReviewTime);
+for (const [variant, label] of [
+  ['survivor-notices-first', 'survivor-first'],
+  ['audience-notices-first', 'audience-first'],
+]) {
+  await renderTo(`review-attention-${label}-00m26.png`, stateAt(attentionReviewTime), {
+    shot: attentionShot,
+    camera: attentionCameraAt(attentionReviewTime, variant),
+  });
+}
 
 for (const cam of ['docking', 'hydro', 'chapel']) {
   const c = CAMERAS[cam];

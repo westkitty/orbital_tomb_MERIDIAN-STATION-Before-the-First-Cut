@@ -36,6 +36,53 @@ export const IDS = Object.freeze(Object.fromEntries(Object.entries({
   components: ['comp.arm01','comp.segment02','comp.hydro_rack'],
 }).map(([kind, ids]) => [kind, Object.freeze(ids)])));
 
+// Mara and Rin traverse one shared, normalized world-space lane behind the
+// Observation Glass. The return uses the same path with a small offset, not a
+// respawned or re-identified pair. Pane coordinates are mapped only by the
+// renderer, so framing changes cannot change their authored trajectories.
+export const OBSERVATION_GLASS_TRACK = Object.freeze({
+  id: 'track.observation-glass.center-lane',
+  glassId: 'door.chapel_glass',
+  laneId: 'lane.observation.center-pane',
+  depth: 'behind-glass',
+  path: Object.freeze([
+    Object.freeze({ x: -1.45, y: 0.66 }),
+    Object.freeze({ x: 1.45, y: 0.66 }),
+  ]),
+  pairOffsets: Object.freeze({ mara: -0.30, rin: 0.12 }),
+  passes: Object.freeze([
+    Object.freeze({ id: 'opening-pass', start: 20, end: 28, offsetX: 0, offsetY: 0 }),
+    Object.freeze({ id: 'return-pass', start: 50, end: 58, offsetX: 0.08, offsetY: -0.06 }),
+  ]),
+});
+
+const entityId = (kind, name) => IDS[kind].find((id) => id.endsWith(`.${name}`));
+
+export function observationGlassCrossingAt(time) {
+  const t = Math.min(Math.max(Number.isFinite(time) ? time : 0, 0), DURATION);
+  const pass = OBSERVATION_GLASS_TRACK.passes.find(({ start, end }) => t >= start && t < end);
+  if (!pass) return null;
+  const progress = clamp01((t - pass.start) / (pass.end - pass.start));
+  const [start, end] = OBSERVATION_GLASS_TRACK.path;
+  const centerX = start.x + (end.x - start.x) * progress + pass.offsetX;
+  const centerY = start.y + (end.y - start.y) * progress + pass.offsetY;
+  const maraId = entityId('actors', 'mara');
+  const rinId = entityId('actors', 'rin');
+  const wrenchId = entityId('props', 'tool_rin');
+  return Object.freeze({
+    id: 'encounter.mara-rin.observation-glass',
+    passId: pass.id,
+    trackId: OBSERVATION_GLASS_TRACK.id,
+    glassId: OBSERVATION_GLASS_TRACK.glassId,
+    laneId: OBSERVATION_GLASS_TRACK.laneId,
+    depth: OBSERVATION_GLASS_TRACK.depth,
+    progress,
+    mara: Object.freeze({ id: maraId, x: centerX + OBSERVATION_GLASS_TRACK.pairOffsets.mara, y: centerY }),
+    rin: Object.freeze({ id: rinId, x: centerX + OBSERVATION_GLASS_TRACK.pairOffsets.rin, y: centerY }),
+    wrench: Object.freeze({ id: wrenchId, ownerId: rinId }),
+  });
+}
+
 export function chapterAt(t) {
   for (const c of CHAPTERS) if (t >= c.start && t < c.end) return c;
   return CHAPTERS[CHAPTERS.length - 1];
@@ -127,26 +174,55 @@ export function stateAt(tRaw) {
   const props = {
     cartCasterPresent: t < 36,   // loose caster lost in M1, never returns
     cartScarred: t >= 36,
-    toolWithRin: true,           // Rin holds the same tool throughout
+    toolWithRin: true,           // one persistent wrench, identified in every state
+    toolRinId: entityId('props', 'tool_rin'),
     mugWithCrew: t >= 10 && t < 14,
     hydroFarDoorwayPresent: t < 62,
   };
 
+  const glassCrossing = observationGlassCrossingAt(t);
+  const survivorAttention = t >= 20 && t < 26
+    ? 'working'
+    : t >= 26 && t < 28
+      ? 'noticing'
+      : t >= 50 && t < 58
+        ? 'watching'
+        : 'quiet';
   const landmarks = {
     heshVisible: t >= 44,
-    maraInLane: t >= 54 && t < 60,
-    rinInLane: t >= 54 && t < 60,
+    maraInLane: glassCrossing !== null,
+    rinInLane: glassCrossing !== null,
     kiraPlaced: t >= 73,
     jalenPlaced: t >= 75,
     safiPlaced: t >= 77,
   };
 
-  // Actor positions are deterministic functions of t (0..1 across their scenes).
+  // Actor positions, performance beats, and identities are deterministic
+  // functions of film time. Recurring figures share the authored glass track.
   const actors = {
-    rin: { x: t < 30 ? 0.35 + seg(t, 12, 16) * 0.1 : 0.5, y: 0.62, tool: true },
-    mara: { x: 0.3 + seg(t, 54, 58) * 0.4, y: 0.45, hair: true },
-    survivor: { handsOnGlass: t >= 80, faceVisible: t >= 80 },
-    worker: { x: 0.2 + seg(t, 0, 8) * 0.3, y: 0.5 },
+    rin: {
+      id: entityId('actors', 'rin'),
+      x: t < 30 ? 0.35 + seg(t, 12, 16) * 0.1 : 0.5,
+      y: 0.62,
+      tool: true,
+      toolId: props.toolRinId,
+      glanceToMara: t >= 17.5 && t < 19,
+    },
+    mara: {
+      id: entityId('actors', 'mara'),
+      x: 0.3 + seg(t, 54, 58) * 0.4,
+      y: 0.45,
+      hair: true,
+      glanceToRin: t >= 18 && t < 19.5,
+    },
+    survivor: {
+      id: entityId('actors', 'survivor'),
+      handsOnGlass: t >= 80,
+      faceVisible: t >= 80,
+      attention: survivorAttention,
+    },
+    glassCrossing,
+    worker: { id: entityId('actors', 'worker'), x: 0.2 + seg(t, 0, 8) * 0.3, y: 0.5 },
   };
 
   // Tiger: deliberate silhouette; never before 30, backlit in finale.

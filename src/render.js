@@ -2,7 +2,7 @@
 // Layered canvas art: stars, Virgil, station, interiors, crew. Bounded particles.
 // Same camera/geometry reused for intact/damaged match cuts.
 
-import { STARS, DEBRIS, GEOMETRY } from './sim.js';
+import { STARS, DEBRIS, GEOMETRY, OBSERVATION_GLASS_TRACK, observationGlassCrossingAt } from './sim.js';
 import { CAMERAS, shotAt } from './cameras.js';
 
 const CYAN = '#37e6ff', WARM = '#ffd9a0';
@@ -352,21 +352,166 @@ export function drawTiger(ctx, cx, cy, s, t) {
 
 function drawCrew(ctx, x, y, s, opts) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-  // rim light pass (cyan) then body pass
+  // Generic silhouettes remain limited to incidental background workers.
   ctx.fillStyle = 'rgba(55,230,255,0.28)';
   ctx.fillRect(-0.22, -0.5, 0.44, 0.92);
   ctx.beginPath(); ctx.arc(0.02, -0.68, 0.18, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = opts.suit || '#3a4c60';
   ctx.fillRect(-0.18, -0.5, 0.36, 0.9);
-  // suit shading stripe
   ctx.fillStyle = 'rgba(10,16,24,0.45)'; ctx.fillRect(0.05, -0.5, 0.13, 0.9);
   ctx.fillStyle = opts.suit || '#3a4c60';
   ctx.beginPath(); ctx.arc(0, -0.68, 0.16, 0, Math.PI * 2); ctx.fill();
-  // helmet visor glint
   ctx.fillStyle = 'rgba(150,220,245,0.5)'; ctx.fillRect(-0.1, -0.71, 0.2, 0.045);
-  if (opts.hair) { ctx.fillStyle = '#eef3f8'; ctx.beginPath(); ctx.ellipse(0, -0.72, 0.24, 0.09, 0.25, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(238,243,248,0.6)'; ctx.fillRect(0.08, -0.72, 0.16, 0.05); } // Mara's comet hair
-  if (opts.tool) { ctx.strokeStyle = '#cfdce9'; ctx.lineWidth = 0.05; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0.18, -0.18); ctx.lineTo(0.44, 0.08); ctx.stroke(); ctx.fillStyle = CYAN; ctx.fillRect(0.40, 0.06, 0.06, 0.03); } // Rin's driver
+  if (opts.hair) { ctx.fillStyle = '#eef3f8'; ctx.beginPath(); ctx.ellipse(0, -0.72, 0.24, 0.09, 0.25, 0, Math.PI * 2); ctx.fill(); }
+  if (opts.tool) { ctx.strokeStyle = '#cfdce9'; ctx.lineWidth = 0.05; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0.18, -0.18); ctx.lineTo(0.44, 0.08); ctx.stroke(); }
   if (opts.mug) { ctx.fillStyle = WARM; ctx.fillRect(0.2, -0.36, 0.1, 0.12); }
+  ctx.restore();
+}
+
+// The two recurring figures use stable visual identifiers, not generic crew
+// silhouettes: Mara's pale trailing hair and Rin's dark hair plus one wrench.
+function drawOpenWrench(ctx, x, y, length, angle = 0) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  const jaw = length * 0.24;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#c4d0dc'; ctx.lineWidth = Math.max(1.7, length * 0.085);
+  ctx.beginPath(); ctx.moveTo(0, length * 0.18); ctx.lineTo(0, -length * 0.28); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-jaw * 0.45, -length * 0.20);
+  ctx.lineTo(-jaw * 1.45, -length * 0.48);
+  ctx.lineTo(-jaw * 0.88, -length * 0.72);
+  ctx.lineTo(-jaw * 0.16, -length * 0.45);
+  ctx.moveTo(jaw * 0.45, -length * 0.20);
+  ctx.lineTo(jaw * 1.45, -length * 0.48);
+  ctx.lineTo(jaw * 0.88, -length * 0.72);
+  ctx.lineTo(jaw * 0.16, -length * 0.45);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(18,29,40,0.82)'; ctx.lineWidth = Math.max(0.8, length * 0.027);
+  ctx.beginPath(); ctx.moveTo(-jaw * 0.45, -length * 0.20); ctx.lineTo(0, -length * 0.28); ctx.lineTo(jaw * 0.45, -length * 0.20); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, length * 0.16, length * 0.065, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawMara(ctx, x, feetY, height, options = {}) {
+  const gait = Number.isFinite(options.gait) ? options.gait : 0;
+  const bob = Math.sin(gait * 2) * height * 0.006;
+  const hairFlow = Math.sin(gait * 1.3) * height * 0.018;
+  ctx.save(); ctx.translate(x, feetY + bob);
+
+  // Long silver hair trails behind her path as three readable tapered locks.
+  const hair = ctx.createLinearGradient(-height * 1.02, -height * 0.88, height * 0.04, -height * 0.76);
+  hair.addColorStop(0, '#71808d'); hair.addColorStop(0.35, '#dce5ec'); hair.addColorStop(1, '#f2f5f7');
+  ctx.fillStyle = hair;
+  ctx.beginPath();
+  ctx.moveTo(-height * 0.06, -height * 0.90);
+  ctx.bezierCurveTo(-height * 0.30, -height * 1.03, -height * 0.66, -height * 0.99 + hairFlow, -height * 1.02, -height * 0.80 + hairFlow);
+  ctx.bezierCurveTo(-height * 0.72, -height * 0.91 + hairFlow, -height * 0.35, -height * 0.86, -height * 0.08, -height * 0.80);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-height * 0.05, -height * 0.82);
+  ctx.bezierCurveTo(-height * 0.36, -height * 0.87, -height * 0.68, -height * 0.71 - hairFlow, -height * 0.93, -height * 0.61 - hairFlow);
+  ctx.bezierCurveTo(-height * 0.60, -height * 0.70 - hairFlow, -height * 0.32, -height * 0.68, -height * 0.02, -height * 0.75);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(247,250,252,0.76)'; ctx.lineWidth = Math.max(1, height * 0.012);
+  ctx.beginPath(); ctx.moveTo(-height * 0.12, -height * 0.88); ctx.quadraticCurveTo(-height * 0.56, -height * 0.99 + hairFlow, -height * 0.94, -height * 0.81 + hairFlow); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-height * 0.12, -height * 0.80); ctx.quadraticCurveTo(-height * 0.51, -height * 0.78 - hairFlow, -height * 0.84, -height * 0.63 - hairFlow); ctx.stroke();
+
+  // Work suit and legs, with a small walk phase but no weightless scatter.
+  ctx.fillStyle = '#17222e';
+  ctx.strokeStyle = '#263647'; ctx.lineWidth = height * 0.065; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-height * 0.055, -height * 0.34); ctx.lineTo(-height * 0.075, -height * 0.02 + Math.sin(gait) * height * 0.015); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(height * 0.055, -height * 0.34); ctx.lineTo(height * 0.075, -height * 0.02 - Math.sin(gait) * height * 0.015); ctx.stroke();
+  ctx.fillStyle = '#546272';
+  ctx.beginPath(); ctx.moveTo(-height * 0.15, -height * 0.66); ctx.lineTo(-height * 0.11, -height * 0.36); ctx.lineTo(height * 0.11, -height * 0.36); ctx.lineTo(height * 0.16, -height * 0.65); ctx.lineTo(height * 0.08, -height * 0.70); ctx.lineTo(-height * 0.08, -height * 0.70); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(190,212,230,0.20)'; ctx.fillRect(-height * 0.12, -height * 0.65, height * 0.024, height * 0.27);
+  ctx.fillStyle = '#293847'; ctx.fillRect(-height * 0.09, -height * 0.39, height * 0.18, height * 0.035);
+
+  // The open hand braces the hinge; the opposite arm swings only when walking.
+  if (options.bracePoint) {
+    const tx = options.bracePoint.x - x, ty = options.bracePoint.y - feetY - bob;
+    ctx.strokeStyle = '#364654'; ctx.lineWidth = height * 0.055; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(height * 0.08, -height * 0.62); ctx.lineTo(height * 0.29, -height * 0.51); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.fillStyle = '#c4b6a5'; ctx.beginPath(); ctx.arc(tx, ty, height * 0.045, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(243,237,228,0.78)'; ctx.lineWidth = Math.max(1, height * 0.012);
+    for (let finger = -1; finger <= 1; finger++) {
+      ctx.beginPath(); ctx.moveTo(tx, ty + finger * height * 0.012); ctx.lineTo(tx + height * 0.035, ty + finger * height * 0.02); ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = '#364654'; ctx.lineWidth = height * 0.052; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-height * 0.08, -height * 0.62); ctx.lineTo(-height * 0.12, -height * 0.38 + Math.sin(gait + 0.8) * height * 0.04); ctx.stroke();
+  }
+  if (!options.bracePoint) {
+    ctx.strokeStyle = '#364654'; ctx.lineWidth = height * 0.052; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(height * 0.08, -height * 0.62); ctx.lineTo(height * 0.16, -height * 0.39 + Math.sin(gait) * height * 0.04); ctx.stroke();
+  }
+
+  // Bare face and pale hair edge preserve Mara's approved silhouette cues.
+  ctx.fillStyle = '#a99c91';
+  ctx.beginPath(); ctx.ellipse(height * 0.005, -height * 0.79, height * 0.083, height * 0.105, 0.02, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d7c8b8';
+  ctx.beginPath(); ctx.ellipse(height * 0.082, -height * 0.785, height * 0.019, height * 0.03, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#342d29'; ctx.lineWidth = Math.max(1.2, height * 0.013);
+  const eyeY = -height * (options.glanceToRin ? 0.805 : 0.782);
+  ctx.beginPath(); ctx.moveTo(height * 0.012, eyeY); ctx.lineTo(height * 0.05, eyeY + height * 0.003); ctx.stroke();
+  ctx.strokeStyle = '#e9eef2'; ctx.lineWidth = Math.max(1.4, height * 0.026);
+  ctx.beginPath(); ctx.moveTo(-height * 0.064, -height * 0.87); ctx.quadraticCurveTo(height * 0.005, -height * 0.94, height * 0.085, -height * 0.865); ctx.stroke();
+  ctx.restore();
+}
+
+function drawRin(ctx, x, feetY, height, options = {}) {
+  const gait = Number.isFinite(options.gait) ? options.gait : 0;
+  const bob = Math.sin(gait * 2 + 0.5) * height * 0.004;
+  const facingLeft = options.facing === 'left';
+  ctx.save(); ctx.translate(x, feetY + bob);
+  if (facingLeft) ctx.scale(-1, 1);
+  ctx.strokeStyle = '#18232f'; ctx.lineWidth = height * 0.07; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-height * 0.06, -height * 0.34); ctx.lineTo(-height * 0.07, -height * 0.015 + Math.sin(gait) * height * 0.015); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(height * 0.06, -height * 0.34); ctx.lineTo(height * 0.075, -height * 0.015 - Math.sin(gait) * height * 0.015); ctx.stroke();
+  ctx.fillStyle = '#303b46';
+  ctx.beginPath(); ctx.moveTo(-height * 0.17, -height * 0.67); ctx.lineTo(-height * 0.12, -height * 0.35); ctx.lineTo(height * 0.12, -height * 0.35); ctx.lineTo(height * 0.17, -height * 0.66); ctx.lineTo(height * 0.1, -height * 0.71); ctx.lineTo(-height * 0.1, -height * 0.71); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#596879'; ctx.fillRect(-height * 0.11, -height * 0.65, height * 0.04, height * 0.27);
+  ctx.fillStyle = '#997450'; ctx.fillRect(-height * 0.11, -height * 0.40, height * 0.22, height * 0.035);
+
+  let handX, handY;
+  if (options.workPoint) {
+    handX = facingLeft ? x - options.workPoint.x : options.workPoint.x - x;
+    handY = options.workPoint.y - feetY - bob;
+    const shoulderX = -height * 0.08;
+    const shoulderY = -height * 0.63;
+    const elbowX = shoulderX * 0.35 + handX * 0.65;
+    const elbowY = shoulderY * 0.4 + handY * 0.6 - height * 0.04;
+    ctx.strokeStyle = '#263440'; ctx.lineWidth = height * 0.06; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(shoulderX, shoulderY); ctx.lineTo(elbowX, elbowY); ctx.lineTo(handX, handY); ctx.stroke();
+  } else {
+    handX = height * 0.19;
+    handY = -height * 0.31 + bob;
+    ctx.strokeStyle = '#263440'; ctx.lineWidth = height * 0.055; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-height * 0.08, -height * 0.62); ctx.lineTo(-height * 0.15, -height * 0.38 + Math.sin(gait) * height * 0.04); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(height * 0.08, -height * 0.62); ctx.lineTo(handX, handY); ctx.stroke();
+  }
+  ctx.fillStyle = '#c0a68e'; ctx.beginPath(); ctx.arc(handX, handY, height * 0.035, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#a9896d';
+  ctx.beginPath(); ctx.ellipse(0, -height * 0.80, height * 0.085, height * 0.102, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#171717';
+  ctx.beginPath(); ctx.moveTo(-height * 0.09, -height * 0.82); ctx.lineTo(-height * 0.075, -height * 0.91); ctx.quadraticCurveTo(0, -height * 0.99, height * 0.09, -height * 0.91); ctx.lineTo(height * 0.085, -height * 0.82); ctx.lineTo(height * 0.03, -height * 0.855); ctx.lineTo(-height * 0.005, -height * 0.82); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#1e1c19';
+  ctx.beginPath(); ctx.ellipse(-height * 0.09, -height * 0.79, height * 0.02, height * 0.04, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#2b211a'; ctx.lineWidth = Math.max(1.2, height * 0.013);
+  const gazeY = -height * (options.glanceToMara ? 0.803 : 0.78);
+  ctx.beginPath(); ctx.moveTo(height * 0.025, gazeY); ctx.lineTo(height * 0.063, gazeY - (options.glanceToMara ? height * 0.018 : 0)); ctx.stroke();
+
+  const wrenchX = options.wrenchPoint
+    ? (facingLeft ? x - options.wrenchPoint.x : options.wrenchPoint.x - x)
+    : handX;
+  const wrenchY = options.wrenchPoint ? options.wrenchPoint.y - feetY - bob : handY;
+  const wrenchAngle = Number.isFinite(options.wrenchAngle) ? options.wrenchAngle : 0.44;
+  drawOpenWrench(ctx, wrenchX, wrenchY, options.wrenchLength || height * 0.42, wrenchAngle);
+  if (options.mug) {
+    ctx.fillStyle = WARM; ctx.fillRect(-height * 0.24, -height * 0.45, height * 0.11, height * 0.15);
+    ctx.strokeStyle = WARM; ctx.lineWidth = Math.max(0.7, height * 0.018);
+    ctx.strokeRect(-height * 0.275, -height * 0.42, height * 0.04, height * 0.07);
+  }
   ctx.restore();
 }
 
@@ -395,6 +540,78 @@ function lightCone(ctx, x, y, w2, h2, alpha) {
   const g = ctx.createLinearGradient(0, y, 0, y + h2);
   g.addColorStop(0, `rgba(255,238,190,${alpha})`); g.addColorStop(1, 'rgba(255,238,190,0)');
   ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y); ctx.lineTo(x + w2, y + h2); ctx.lineTo(x - w2, y + h2); ctx.closePath(); ctx.fill();
+}
+
+function drawHydroServicePanel(ctx, w, h, { powered = true, rupture = 0 } = {}) {
+  const x = w * 0.40, y = h * 0.50, panelW = w * 0.17, panelH = h * 0.20;
+  const damage = clamp01(rupture);
+  ctx.fillStyle = 'rgba(2,7,10,0.72)'; ctx.fillRect(x - 8, y - 10, panelW + 16, panelH + 20);
+  ctx.fillStyle = damage > 0 ? '#27332e' : '#273a34'; ctx.fillRect(x, y, panelW, panelH);
+  ctx.fillStyle = '#0e1917'; ctx.fillRect(x + 8, y + 8, panelW - 16, panelH - 16);
+  ctx.strokeStyle = damage > 0 ? '#66746b' : '#71877c'; ctx.lineWidth = 2.2; ctx.strokeRect(x + 2, y + 2, panelW - 4, panelH - 4);
+  ctx.strokeStyle = 'rgba(176,210,190,0.48)'; ctx.lineWidth = 1;
+  for (let row = 0; row < 3; row++) {
+    const yy = y + panelH * (0.31 + row * 0.20);
+    ctx.beginPath(); ctx.moveTo(x + panelW * 0.42, yy); ctx.lineTo(x + panelW * 0.86, yy); ctx.stroke();
+  }
+  ctx.fillStyle = powered ? '#7bd0a2' : '#3b5449'; ctx.fillRect(x + panelW * 0.47, y + panelH * 0.22, panelW * 0.22, 4);
+  ctx.fillStyle = damage > 0.12 ? '#ff9868' : '#e5b477'; ctx.fillRect(x + panelW * 0.74, y + panelH * 0.22, 5, 4);
+  if (damage > 0.12) {
+    ctx.strokeStyle = `rgba(255,150,98,${0.25 + damage * 0.65})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + panelW * 0.70, y + panelH * 0.36); ctx.lineTo(x + panelW * 0.75, y + panelH * 0.42); ctx.lineTo(x + panelW * 0.70, y + panelH * 0.48); ctx.stroke();
+  }
+  // The cover is hinged open; Mara's hand braces its exposed edge.
+  ctx.fillStyle = '#3a4e46';
+  ctx.beginPath(); ctx.moveTo(x + 4, y + 5); ctx.lineTo(x - w * 0.035, y + h * 0.025); ctx.lineTo(x - w * 0.035, y + panelH - h * 0.025); ctx.lineTo(x + 4, y + panelH - 5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#8ba496'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#0c1414'; ctx.fillRect(x + panelW * 0.74, y + panelH * 0.38, panelW * 0.13, panelH * 0.22);
+  ctx.strokeStyle = '#bdcbd2'; ctx.lineWidth = 2;
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    ctx.beginPath(); ctx.arc(x + panelW * (0.75 + dx * 0.12), y + panelH * (0.39 + dy * 0.19), 3.2, 0, Math.PI * 2); ctx.stroke();
+  }
+  for (const [dx, dy] of [[7, 7], [panelW - 7, 7], [7, panelH - 7], [panelW - 7, panelH - 7]]) {
+    ctx.fillStyle = '#b0c2c8'; ctx.beginPath(); ctx.arc(x + dx, y + dy, 2.1, 0, Math.PI * 2); ctx.fill();
+  }
+  return {
+    bracePoint: { x: x + 2, y: y + panelH * 0.56 },
+    workPoint: { x: x + panelW * 0.80, y: y + panelH * 0.48 },
+  };
+}
+
+function drawHydroServiceHandoff(ctx, w, h, state, t, reduced, service) {
+  const cooperationProgress = clamp01((t - 14) / 6);
+  const turn = Math.sin((t - 14) * Math.PI * 1.25) * (reduced ? 0 : 0.035);
+  drawMara(ctx, w * 0.33, h * 0.80, h * 0.27, {
+    bracePoint: service.bracePoint,
+    glanceToRin: state.actors.mara.glanceToRin,
+    gait: reduced ? 0 : cooperationProgress * 0.2,
+  });
+  drawRin(ctx, w * 0.63, h * 0.80, h * 0.27, {
+    facing: 'left',
+    workPoint: { x: service.workPoint.x, y: service.workPoint.y + turn },
+    wrenchPoint: { x: service.workPoint.x, y: service.workPoint.y + turn },
+    wrenchLength: h * 0.115,
+    wrenchAngle: -0.56 + (reduced ? 0 : Math.sin((t - 14) * Math.PI * 0.75) * 0.035),
+    glanceToMara: state.actors.rin.glanceToMara,
+    gait: reduced ? 0 : cooperationProgress * 0.16,
+  });
+}
+
+function drawGlassCrossingBehindPane(ctx, pane, crossing, time, reduced) {
+  if (!crossing) return;
+  const [trackStart, trackEnd] = OBSERVATION_GLASS_TRACK.path;
+  const xScale = pane.width / (trackEnd.x - trackStart.x);
+  const xOf = (worldX) => worldX * xScale;
+  const feetY = (crossing.mara.y - 0.5) * pane.height;
+  const actorHeight = pane.height * 0.18;
+  const pass = OBSERVATION_GLASS_TRACK.passes.find(({ id }) => id === crossing.passId);
+  const gait = reduced || !pass ? 0 : (time - pass.start) * 1.2;
+  drawMara(ctx, xOf(crossing.mara.x), feetY, actorHeight, { gait });
+  drawRin(ctx, xOf(crossing.rin.x), feetY, actorHeight, {
+    gait,
+    wrenchLength: actorHeight * 0.43,
+    wrenchAngle: 0.44,
+  });
 }
 
 export function drawInterior(ctx, w, h, state, t, reduced, lastShift = {}) {
@@ -459,7 +676,11 @@ export function drawInterior(ctx, w, h, state, t, reduced, lastShift = {}) {
     : 0.24 + clamp01((state.t - 8) / 6) * 0.18;
   const cartX = w * cartFactor;
   drawCart(ctx, cartX, h * 0.76, 46, state.props.cartCasterPresent, t);
-  drawCrew(ctx, cartX + 46, h * 0.70, 42, { suit: '#7a5a3a', tool: state.props.toolWithRin, mug: state.props.mugWithCrew });
+  drawRin(ctx, cartX + 46, h * 0.70, 42, {
+    gait: reduced ? 0 : t * 0.32,
+    wrenchLength: 18,
+    mug: state.props.mugWithCrew,
+  });
   // mug handoff arc (life chapter 10-14s): crew2 passes mug to Rin
   if (state.props.mugWithCrew) {
     const u = clamp01((t - 10) / 4);
@@ -613,49 +834,54 @@ export function drawHydro(ctx, w, h, state, t, reduced, options = {}) {
       ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + 5 + flow * 12, py - 1 - flow * 3); ctx.stroke();
     }
   }
-  // Rin and Mara hand a seedling tray between them in the first shift.
-  if (state.t < 30) {
-    const handoff = clamp01((state.t - 14) / 6);
-    const mx = w * (0.36 + handoff * 0.055);
-    drawCrew(ctx, w * 0.29, h * 0.72, 35, { suit: '#54486a', hair: true }); // Mara
-    drawCrew(ctx, w * 0.56, h * 0.70, 40, { suit: '#7a5a3a', tool: true }); // Rin
-    ctx.fillStyle = '#435947'; ctx.fillRect(mx - 10, h * 0.645, 20, 9);
-    ctx.fillStyle = '#78c98e'; ctx.fillRect(mx - 7, h * 0.635, 5, 10); ctx.fillRect(mx + 2, h * 0.63, 4, 12);
-  } else if (!ruptured) {
-    drawCrew(ctx, w * 0.56, h * 0.70, 40, { suit: '#7a5a3a', tool: true });
-  } else if (rup < 0.35) drawCrew(ctx, w * 0.56, h * 0.70, 40, { suit: '#7a5a3a', tool: true }); // frozen mid-reach
+  const service = drawHydroServicePanel(ctx, w, h, { powered: state.lights.hydroPumps, rupture: rup });
+  if (state.t >= 14 && state.t < 20) {
+    drawHydroServiceHandoff(ctx, w, h, state, t, reduced, service);
+  } else if (state.t >= 60 && state.t < 61.4 && rup < 0.35) {
+    // Rin returns to the same panel with the same persistent wrench at the cut.
+    const torque = reduced ? 0 : Math.sin((t - 60) * Math.PI * 2) * 0.035;
+    drawRin(ctx, w * 0.63, h * 0.80, h * 0.27, {
+      facing: 'left',
+      workPoint: { x: service.workPoint.x, y: service.workPoint.y },
+      wrenchPoint: { x: service.workPoint.x, y: service.workPoint.y },
+      wrenchLength: h * 0.115,
+      wrenchAngle: -0.56 + torque,
+      gait: reduced ? 0 : (t - 60) * 0.28,
+    });
+  }
   vignette(ctx, w, h, 0.45);
 }
 
 
 function drawSurvivor(ctx, x, h, mode) {
-  // Locked observation-chapel camera: same geometry for routine watch and M6.
-  const lean = mode === 'hands' ? 0.15 : 0.04;
-  // legs
+  // Locked observation-chapel camera: same geometry for the first watch and M6.
+  const lean = mode === 'hands' ? 0.15 : mode === 'working' ? 0.17 : mode === 'noticing' ? 0.07 : mode === 'watching' ? -0.06 : 0.04;
   ctx.fillStyle = '#10151d';
   ctx.fillRect(x - 12, h * 0.80 - 54, 9, 54);
   ctx.fillRect(x + 3, h * 0.80 - 54, 9, 54);
-  // torso group (leaning toward the glass)
   ctx.save(); ctx.translate(x, h * 0.80 - 52); ctx.rotate(lean);
   const torsoG = ctx.createLinearGradient(0, -58, 0, 0);
   torsoG.addColorStop(0, '#31404f'); torsoG.addColorStop(1, '#1a2230');
   ctx.fillStyle = torsoG;
   ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-11.5, -56); ctx.lineTo(11.5, -56); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(200,225,245,0.14)'; ctx.fillRect(-11.5, -56, 2.5, 56); // rim from the planet
-  // head, profile facing right (glass)
-  const hy = -68;
+  ctx.fillStyle = 'rgba(200,225,245,0.14)'; ctx.fillRect(-11.5, -56, 2.5, 56);
+  const hy = mode === 'working' ? -66 : -68;
   const hg = ctx.createRadialGradient(5, hy - 4, 2, 1, hy, 19);
   hg.addColorStop(0, '#c9b6a3'); hg.addColorStop(0.6, '#7a6a5a'); hg.addColorStop(1, '#241d16');
   ctx.fillStyle = hg;
   ctx.beginPath(); ctx.arc(0, hy, 12, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(10.8, hy - 1.2); ctx.lineTo(15.6, hy + 2.1); ctx.lineTo(10.8, hy + 4.2); ctx.closePath(); ctx.fill(); // nose, lit
-  ctx.fillStyle = '#171009'; // swept hair
+  ctx.beginPath(); ctx.moveTo(10.8, hy - 1.2); ctx.lineTo(15.6, hy + 2.1); ctx.lineTo(10.8, hy + 4.2); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#171009';
   ctx.beginPath(); ctx.ellipse(-1.5, hy - 6.2, 12.4, 7.6, 0.12, Math.PI, Math.PI * 2); ctx.fill();
   ctx.fillRect(-13, hy - 7, 4.5, 9);
-  ctx.strokeStyle = 'rgba(18,13,9,0.9)'; ctx.lineWidth = 1.3; // closed eye
-  ctx.beginPath(); ctx.moveTo(4.5, hy - 1.4); ctx.lineTo(9.2, hy - 1.6); ctx.stroke();
+  if (mode === 'working') {
+    ctx.strokeStyle = 'rgba(18,13,9,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(4.5, hy + 1.4); ctx.lineTo(9.2, hy + 2.2); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#1c1712'; ctx.beginPath(); ctx.ellipse(7, hy - 1.4, 2.1, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(241,222,199,0.9)'; ctx.fillRect(8.1, hy - 2.3, 1.2, 1.2);
+  }
   if (mode === 'hands') {
-    // both arms extended to the glass; palms flat against the pane
     ctx.strokeStyle = '#28313f'; ctx.lineCap = 'round'; ctx.lineWidth = 7;
     ctx.beginPath(); ctx.moveTo(7, -45); ctx.lineTo(36, -46); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(7, -28); ctx.lineTo(36, -30); ctx.stroke();
@@ -666,11 +892,18 @@ function drawSurvivor(ctx, x, h, mode) {
       ctx.beginPath(); ctx.ellipse(38.5, py, 5.0, 6.6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#d9c6b3';
       for (let f = -1.5; f <= 1.5; f++) { ctx.beginPath(); ctx.ellipse(44, py + f * 4.1, 2.0, 3.3, 0, 0, Math.PI * 2); ctx.fill(); }
-      ctx.fillStyle = 'rgba(215,232,246,0.16)'; // fog bloom on the pane
+      ctx.fillStyle = 'rgba(215,232,246,0.16)';
       ctx.beginPath(); ctx.ellipse(41, py, 12.5, 15, 0, 0, Math.PI * 2); ctx.fill();
     }
+  } else if (mode === 'working' || mode === 'noticing') {
+    // One hand works the surviving console; at the notice beat it stills there.
+    ctx.strokeStyle = '#28313f'; ctx.lineCap = 'round'; ctx.lineWidth = 6.5;
+    ctx.beginPath(); ctx.moveTo(-8, -43); ctx.quadraticCurveTo(-15, -24, -6.5, -13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, -43); ctx.quadraticCurveTo(18, -29, 26, -16); ctx.stroke();
+    ctx.fillStyle = '#a68f78'; ctx.beginPath(); ctx.arc(26, -16, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(227,211,190,0.72)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(25, -16); ctx.lineTo(29, -18); ctx.stroke();
   } else {
-    // routine watch: arms clasped behind the back
     ctx.strokeStyle = '#28313f'; ctx.lineCap = 'round'; ctx.lineWidth = 6.5;
     ctx.beginPath(); ctx.moveTo(-8, -43); ctx.quadraticCurveTo(-15, -24, -6.5, -13); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(8, -43); ctx.quadraticCurveTo(13, -26, 2.5, -13); ctx.stroke();
@@ -679,15 +912,17 @@ function drawSurvivor(ctx, x, h, mode) {
 }
 
 
-function drawSurvivorClose(ctx, w, h) {
-  // Final locked close-up: face first, both open palms flat against the same glass.
-  // Back/arms are behind the palms; rim light comes from Virgil, with the surviving strip below.
-  const cx = w * 0.5, cy = h * 0.435;
+function drawSurvivorClose(ctx, w, h, t = 81) {
+  // Same final pane and hand composition; only a slow breath and minute palm
+  // pressure shift move in the interior. A four-second cycle match-cuts at 81/89s.
+  const breath = Math.sin((t - 80) * Math.PI / 2);
+  const chestLift = breath * h * 0.003;
+  const cx = w * 0.5, cy = h * 0.435 - chestLift * 0.16;
   // shoulders and forearms, in worn blue-steel workwear
   const coat = ctx.createLinearGradient(0, h * 0.61, 0, h * 0.98);
   coat.addColorStop(0, '#344456'); coat.addColorStop(0.45, '#202b39'); coat.addColorStop(1, '#111923');
   ctx.fillStyle = coat;
-  ctx.beginPath(); ctx.moveTo(w * 0.18, h); ctx.lineTo(w * 0.24, h * 0.74); ctx.quadraticCurveTo(w * 0.31, h * 0.62, w * 0.42, h * 0.62); ctx.lineTo(w * 0.58, h * 0.62); ctx.quadraticCurveTo(w * 0.69, h * 0.62, w * 0.76, h * 0.74); ctx.lineTo(w * 0.82, h); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(w * 0.18, h); ctx.lineTo(w * 0.24, h * 0.74 - chestLift * 0.25); ctx.quadraticCurveTo(w * 0.31, h * 0.62 - chestLift, w * 0.42, h * 0.62 - chestLift); ctx.lineTo(w * 0.58, h * 0.62 - chestLift); ctx.quadraticCurveTo(w * 0.69, h * 0.62 - chestLift, w * 0.76, h * 0.74 - chestLift * 0.25); ctx.lineTo(w * 0.82, h); ctx.closePath(); ctx.fill();
   // forearms in sleeves converge toward the glass, kept below the face
   ctx.fillStyle = '#293748';
   ctx.beginPath(); ctx.moveTo(w * 0.36, h * 0.69); ctx.lineTo(w * 0.41, h * 0.66); ctx.lineTo(w * 0.35, h * 0.54); ctx.lineTo(w * 0.30, h * 0.56); ctx.closePath(); ctx.fill();
@@ -727,9 +962,14 @@ function drawSurvivorClose(ctx, w, h) {
   ctx.beginPath(); ctx.moveTo(cx, cy + h * 0.005); ctx.quadraticCurveTo(cx + 2, cy + h * 0.045, cx - 1, cy + h * 0.052); ctx.stroke();
   ctx.strokeStyle = 'rgba(45,29,24,0.78)'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(cx - w * 0.019, cy + h * 0.092); ctx.quadraticCurveTo(cx, cy + h * 0.096, cx + w * 0.019, cy + h * 0.091); ctx.stroke();
+  const breathMist = ctx.createRadialGradient(cx, cy + h * 0.16, 2, cx, cy + h * 0.16, w * 0.065);
+  breathMist.addColorStop(0, `rgba(215,232,246,${0.018 + (1 - breath) * 0.009})`);
+  breathMist.addColorStop(1, 'rgba(215,232,246,0)');
+  ctx.fillStyle = breathMist; ctx.beginPath(); ctx.arc(cx, cy + h * 0.16, w * 0.065, 0, Math.PI * 2); ctx.fill();
   // both palms: open, fingers separated, skin lit against the dark glass
   for (const side of [-1, 1]) {
-    const px = cx + side * w * 0.177, py = h * 0.55;
+    const pressure = breath * h * 0.001;
+    const px = cx + side * w * 0.177, py = h * 0.55 + pressure;
     const palm = ctx.createRadialGradient(px - side * 5, py - 9, 2, px, py, w * 0.052);
     palm.addColorStop(0, '#e0cfbd'); palm.addColorStop(0.6, '#ad9882'); palm.addColorStop(1, '#55473b');
     ctx.fillStyle = palm;
@@ -763,6 +1003,7 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
 
   const bays = GEOMETRY.observationBays;
   const baysGeom = [];
+  const glassCrossing = observationGlassCrossingAt(t);
   for (let b = 0; b < bays; b++) {
     const bw = w * 0.26, bh = h * 0.5;
     const bx = w * (0.08 + b * 0.32), by = h * 0.1;
@@ -779,6 +1020,7 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
     vg.addColorStop(0, '#b8cfe2'); vg.addColorStop(0.4, '#5d7d9e'); vg.addColorStop(1, '#1e2c3f');
     ctx.fillStyle = vg; ctx.beginPath(); ctx.arc(vOff + bw * 0.28, bh * 0.62, bw * 1.15, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(210,226,242,0.18)'; ctx.fillRect(-bw / 2, bh * 0.02, bw, bh * 0.055); ctx.fillRect(-bw / 2, bh * 0.2, bw, bh * 0.04);
+    if (b === 1) drawGlassCrossingBehindPane(ctx, { width: bw, height: bh }, glassCrossing, t, reduced);
     // glass reflection sheen
     const sheen = ctx.createLinearGradient(-bw / 2, -bh / 2, bw / 2, bh / 2);
     sheen.addColorStop(0, 'rgba(200,225,248,0.22)'); sheen.addColorStop(0.35, 'rgba(200,225,248,0.03)'); sheen.addColorStop(0.6, 'rgba(200,225,248,0.1)'); sheen.addColorStop(1, 'rgba(200,225,248,0)');
@@ -815,12 +1057,12 @@ export function drawChapel(ctx, w, h, state, t, reduced, inspectionCamera = fals
   const closeBeat = state.finale.hands || state.finale.returnHands || state.finale.exterior;
   if (closeBeat) {
     if (inspectionCamera) drawSurvivor(ctx, w * 0.5, h * 0.80, 'watch');
-    else drawSurvivorClose(ctx, w, h);
+    else drawSurvivorClose(ctx, w, h, t);
     // The same surviving strip light remains visible through the crossing.
     ctx.fillStyle = 'rgba(255,233,184,0.28)'; ctx.fillRect(w * 0.18, h * 0.815, w * 0.64, 10);
     ctx.fillStyle = '#ffe9b8'; ctx.fillRect(w * 0.18, h * 0.825, w * 0.64, 3);
   } else {
-    drawSurvivor(ctx, w * 0.5, h * 0.80, 'watch');
+    drawSurvivor(ctx, w * 0.5, h * 0.80, state.actors.survivor.attention || 'watch');
     if (state.t < 30) {
       const phase = reduced ? 0.5 : 0.5 + Math.sin(t * 0.38 + 0.9) * 0.04;
       drawCrew(ctx, w * (0.84 + phase * 0.025), h * 0.78, 26, { suit: '#526476' }); // attendant checks the side console
@@ -874,12 +1116,8 @@ export function drawViewportLane(ctx, w, h, state, t, reduced) {
     const x0 = w * d.x, y0 = h * d.y;
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + u * w * 0.09, y0 + u * h * 0.045); ctx.stroke();
   }
-  // Mara + Rin crossing the same lane, same relationship as home
-  if (state.landmarks.maraInLane) {
-    const uu = clamp01((state.t - 54) / 4.5);
-    drawCrew(ctx, w * (0.26 + uu * 0.34), h * 0.47, 35, { suit: '#54486a', hair: true });
-    drawCrew(ctx, w * (0.37 + uu * 0.34), h * 0.5, 35, { suit: '#7a5a3a', tool: true });
-  }
+  // drawChapel paints the recurring pair on the same normalized world-space
+  // track behind the center pane; this shot adds only the north-vent debris.
 }
 
 // ---------- M5 reliquary ----------

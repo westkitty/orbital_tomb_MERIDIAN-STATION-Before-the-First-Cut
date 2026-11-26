@@ -28,9 +28,7 @@ const cues = [
   { id: 'hydroponic-handoff', start: 14, end: 20, scene: 'hydro', from: [1.02, .5, .5, 0], to: [1.08, .48, .52, 0] },
   { id: 'routine-watch', start: 20, end: 28, scene: 'chapel', from: [1.02, .5, .5, 0], to: [1.06, .5, .47, 0] },
   { id: 'm1-match-setup', start: 28, end: 30, scene: 'exterior', from: [1.45, .40, .31, 0], to: [1.45, .40, .31, 0] },
-  { id: 'arm01-peel', start: 30, end: 34, scene: 'exterior', from: [1.45, .40, .31, 0], to: [1.45, .40, .31, 0] },
-  { id: 'pressure-reroute', start: 34, end: 38, scene: 'interior', from: [1.04, .5, .5, 0], to: [1.08, .5, .5, 0] },
-  { id: 'empty-socket', start: 38, end: 39.2, scene: 'exterior', from: [1.45, .40, .31, 0], to: [1.34, .5, .35, 0] },
+  { id: 'arm01-peel', start: 30, end: 39.2, scene: 'exterior', from: [1.45, .40, .31, 0], to: [1.34, .5, .35, 0] },
   { id: 'm2-match-setup', start: 39.2, end: 40, scene: 'exterior', from: [1.34, .5, .35, 0], to: [1.34, .5, .35, 0] },
   { id: 'segment02-peel', start: 40, end: 44, scene: 'exterior', from: [1.34, .5, .35, 0], to: [1.34, .5, .35, 0] },
   { id: 'relay-section', start: 44, end: 50, scene: 'exterior', from: [1.34, .5, .35, 0], to: [1.02, .46, .5, 0] },
@@ -66,12 +64,49 @@ export function shotAt(time) {
     start: cue.start,
     end: cue.end,
     progress: u,
+    attention: cue.attention || 'incumbent',
     camera: Object.freeze({ zoom: camera[0], focusX: camera[1], focusY: camera[2], roll: camera[3] }),
   });
 }
 
 export function cameraAt(time) {
   return shotAt(time).camera;
+}
+
+const attentionClamp = (value) => Math.max(0, Math.min(1, value));
+const attentionEase = (value) => {
+  const u = attentionClamp(value);
+  return u * u * (3 - 2 * u);
+};
+
+// Review-only A/B framings keep the actors on their shared world-space track.
+// The variants alter camera attention only: they never change timing, pose,
+// gesture, prop identity, or the survivor's authored performance.
+export function attentionCameraAt(time, variant = 'incumbent') {
+  const t = Math.max(0, Math.min(90, Number.isFinite(time) ? time : 0));
+  const base = cameraAt(t);
+  if (variant !== 'survivor-notices-first' && variant !== 'audience-notices-first') return base;
+
+  const opening = t >= 20 && t < 28;
+  const returning = t >= 50 && t < 58;
+  if (!opening && !returning) return base;
+
+  const survivorFocus = { zoom: 1.18, focusX: 0.5, focusY: 0.574, roll: 0 };
+  const audienceFocus = { zoom: 1.42, focusX: 0.53, focusY: 0.355, roll: 0 };
+  const target = variant === 'audience-notices-first' ? audienceFocus : survivorFocus;
+  const transitionStart = opening
+    ? (variant === 'audience-notices-first' ? 25.8 : 25.7)
+    : (variant === 'audience-notices-first' ? 54.2 : 51.2);
+  const transitionDuration = opening
+    ? 2.0
+    : (variant === 'audience-notices-first' ? 3.2 : 1.6);
+  const progress = attentionEase((t - transitionStart) / transitionDuration);
+  return Object.freeze({
+    zoom: target.zoom + (base.zoom - target.zoom) * progress,
+    focusX: target.focusX + (base.focusX - target.focusX) * progress,
+    focusY: target.focusY + (base.focusY - target.focusY) * progress,
+    roll: target.roll + ((base.roll || 0) - target.roll) * progress,
+  });
 }
 
 export function shotCount() { return cues.length; }

@@ -1,13 +1,29 @@
 // MERIDIAN STATION — film and inspection player.
 // Playback clock, authored shot cues, and world state stay independent.
 import { DURATION, CHAPTERS, stateAt, stateHash } from './sim.js';
-import { CAMERAS, MATCH_CUTS, shotAt } from './cameras.js';
+import { CAMERAS, MATCH_CUTS, attentionCameraAt, shotAt } from './cameras.js';
 import { renderScene, letterbox } from './render.js';
+import { createMeridian3D } from './scene3d.js';
 import { LAST_SHIFT_STAGES, SHIFT_ROUTE, lastShiftJourney, lastShiftPair, lastShiftTime, routePointAt } from './last-shift.js';
 import { drawLastShift } from './last-shift-render.js';
 
 const canvas = document.getElementById('film');
-const ctx = canvas.getContext('2d');
+const fallbackCanvas = document.getElementById('filmFallback');
+const ctx = fallbackCanvas.getContext('2d');
+let renderer3d;
+try {
+  renderer3d = createMeridian3D(canvas);
+} catch (error) {
+  renderer3d = {
+    available: false,
+    reason: error?.message || 'WebGL scene initialization failed',
+    resize() {},
+    render() {},
+    metrics: () => ({ available: false, reason: error?.message || 'WebGL scene initialization failed' }),
+  };
+}
+document.body.classList.toggle('renderer-fallback', !renderer3d.available);
+window.addEventListener('pagehide', () => renderer3d.dispose?.(), { once: true });
 const shiftCanvas = document.getElementById('shiftCanvas');
 const shiftCtx = shiftCanvas.getContext('2d');
 const timeEl = document.getElementById('time');
@@ -18,6 +34,7 @@ const hud = document.getElementById('hud');
 const sysSel = document.getElementById('system');
 const baToggle = document.getElementById('beforeAfter');
 const baCam = document.getElementById('baCamera');
+const attentionVariant = document.getElementById('attentionVariant');
 const reducedToggle = document.getElementById('reduced');
 const soundToggle = document.getElementById('sound');
 const chapterButtons = [...document.querySelectorAll('.chapters button')];
@@ -42,6 +59,7 @@ let mode = 'film';
 let playing = true;
 let t = 0;
 let lastTs = null;
+let drawDirty = true;
 let reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let audioCtx = null;
 let ambience = null;
@@ -66,11 +84,19 @@ function fmt(seconds) {
   return `${String(m).padStart(2, '0')}:${ss}`;
 }
 
+function seekTo(value) {
+  t = Math.min(DURATION, Math.max(0, Number(value) || 0));
+  lastTs = null;
+  draw();
+}
+
 function resize() {
+  drawDirty = true;
   const dpr = Math.min(window.devicePixelRatio || 1, reduced ? 1.5 : 2);
-  const r = canvas.getBoundingClientRect();
-  canvas.width = Math.max(320, Math.round(r.width * dpr));
-  canvas.height = Math.max(240, Math.round(r.height * dpr));
+  const stageRect = document.getElementById('stage').getBoundingClientRect();
+  fallbackCanvas.width = Math.max(320, Math.round(stageRect.width * dpr));
+  fallbackCanvas.height = Math.max(240, Math.round(stageRect.height * dpr));
+  if (renderer3d.available) renderer3d.resize(stageRect.width, stageRect.height, dpr);
 
   const shiftRect = shiftCanvas.getBoundingClientRect();
   const shiftDpr = shiftQuality === 'probing'
@@ -302,19 +328,28 @@ function verifyFullShiftRender(now = performance.now()) {
 }
 
 function draw() {
+  drawDirty = false;
   if (mode === 'lastshift') {
     drawLastShiftFrame();
     return;
   }
+  attentionVariant.disabled = mode !== 'inspect' || baToggle.checked;
   const s = stateAt(t);
   const shot = shotAt(t);
-  const opts = { reduced, shot, camera: shot.camera };
+  const reviewCamera = mode === 'inspect'
+    ? attentionCameraAt(t, attentionVariant.value)
+    : shot.camera;
+  const opts = { reduced, shot, camera: reviewCamera };
   if (mode === 'inspect' && baToggle.checked) {
     const cam = CAMERAS[baCam.value] || CAMERAS.docking;
     opts.beforeAfter = { split: 0.5, intactState: stateAt(cam.intactT), cam: baCam.value };
   }
-  renderScene(ctx, canvas.width, canvas.height, s, opts);
-  if (mode === 'film') letterbox(ctx, canvas.width, canvas.height);
+  if (renderer3d.available) {
+    renderer3d.render(s, t, shot, { ...opts, mode, attentionVariant: attentionVariant.value });
+  } else {
+    renderScene(ctx, fallbackCanvas.width, fallbackCanvas.height, s, opts);
+    if (mode === 'film') letterbox(ctx, fallbackCanvas.width, fallbackCanvas.height);
+  }
 
   timeEl.textContent = `${fmt(t)} / 01:30 · ${s.chapterLabel} · M${s.month}`;
   scrub.value = String(t);
@@ -323,6 +358,8 @@ function draw() {
     hud.innerHTML = `<b>${shot.id}</b> · ${s.chapterLabel}<br>Arms intact: ${s.armsIntact}/12 · Scars: ${s.scars.length}<br>Hash: ${stateHash(t)}`;
     stateOut.textContent = JSON.stringify({
       t: +t.toFixed(2), chapter: s.chapter, month: s.month, shot: shot.id,
+      cameraAttention: baToggle.checked ? 'matched-view' : attentionVariant.value,
+      camera: baToggle.checked ? (CAMERAS[baCam.value] || CAMERAS.docking) : reviewCamera,
       ids: s.ids, armsIntact: s.armsIntact, arm01: s.arm01.phase,
       segment02: s.segment02.phase, hydro: s.hydroRack.phase,
       doors: s.doors, paths: s.paths, lights: s.lights, props: s.props,
@@ -341,7 +378,8 @@ function loop(ts) {
   lastTs = ts;
   if (interval > 0) pushSample('intervals', interval);
   const start = performance.now();
-  if (playing && mode !== 'lastshift') {
+  const advanceFilm = playing && mode !== 'lastshift';
+  if (advanceFilm) {
     t += interval / 1000;
     if (t >= DURATION) {
       t = DURATION;
@@ -356,7 +394,7 @@ function loop(ts) {
     }
     updateShiftRouteMarkers();
     drawLastShiftFrame();
-  } else draw();
+  } else if (advanceFilm || drawDirty) draw();
   const renderMs = performance.now() - start;
   pushSample('render', renderMs);
   if (mode === 'lastshift' && (shiftQuality === 'probing' || shiftQuality === 'full-check')) {
@@ -379,18 +417,19 @@ function setPlaying(value) {
 playBtn.addEventListener('click', () => {
   if (t >= DURATION && !playing) {
     t = 0;
+    lastTs = null;
     setPlaying(true);
   } else {
     setPlaying(!playing);
   }
 });
-document.getElementById('restart').addEventListener('click', () => { t = 0; setPlaying(true); draw(); });
-document.getElementById('back').addEventListener('click', () => { t = Math.max(0, t - 1); draw(); });
-document.getElementById('fwd').addEventListener('click', () => { t = Math.min(DURATION, t + 1); draw(); });
-scrub.addEventListener('input', () => { t = Math.min(DURATION, Math.max(0, Number.parseFloat(scrub.value) || 0)); draw(); });
+document.getElementById('restart').addEventListener('click', () => { setPlaying(true); seekTo(0); });
+document.getElementById('back').addEventListener('click', () => seekTo(t - 1));
+document.getElementById('fwd').addEventListener('click', () => seekTo(t + 1));
+scrub.addEventListener('input', () => seekTo(Number.parseFloat(scrub.value) || 0));
 
 for (const button of chapterButtons) {
-  button.addEventListener('click', () => { t = Number(button.dataset.start); draw(); });
+  button.addEventListener('click', () => seekTo(button.dataset.start));
 }
 
 document.getElementById('modeFilm').addEventListener('click', () => setMode('film'));
@@ -413,6 +452,7 @@ function setMode(nextMode) {
   mode = nextMode;
   const lastShiftPanel = document.getElementById('lastShift');
   lastShiftPanel.hidden = mode !== 'lastshift';
+  attentionVariant.disabled = mode !== 'inspect' || baToggle.checked;
   document.body.classList.toggle('film', mode === 'film');
   document.body.classList.toggle('lastshift', mode === 'lastshift');
   document.body.classList.toggle('shift-fallback', mode === 'lastshift' && shiftQuality === 'fallback');
@@ -489,10 +529,11 @@ soundToggle.addEventListener('change', () => { shiftSound.checked = soundToggle.
 
 sysSel.addEventListener('change', () => {
   const jumps = { docking: 2, transit: 34, hydro: 18, chapel: 26, relay: 44, cryo: 74, sail: 76, antenna: 75 };
-  if (jumps[sysSel.value] != null) { t = jumps[sysSel.value]; draw(); }
+  if (jumps[sysSel.value] != null) seekTo(jumps[sysSel.value]);
 });
 baToggle.addEventListener('change', draw);
 baCam.addEventListener('change', draw);
+attentionVariant.addEventListener('change', draw);
 reducedToggle.addEventListener('change', () => { reduced = reducedToggle.checked; resize(); draw(); });
 
 // Optional generated ambience: one low fan-like tone plus filtered deterministic
@@ -570,22 +611,31 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'Space') { event.preventDefault(); playBtn.click(); }
-  else if (event.key === 'ArrowLeft') { event.preventDefault(); t = Math.max(0, t - 1); draw(); }
-  else if (event.key === 'ArrowRight') { event.preventDefault(); t = Math.min(DURATION, t + 1); draw(); }
-  else if (event.key >= '1' && event.key <= '9') { const chapter = CHAPTERS[Number(event.key) - 1]; if (chapter) { t = chapter.start; draw(); } }
-  else if (event.key === '0') { t = CHAPTERS.at(-1).start; draw(); }
+  else if (event.key === 'ArrowLeft') { event.preventDefault(); seekTo(t - 1); }
+  else if (event.key === 'ArrowRight') { event.preventDefault(); seekTo(t + 1); }
+  else if (event.key >= '1' && event.key <= '9') { const chapter = CHAPTERS[Number(event.key) - 1]; if (chapter) seekTo(chapter.start); }
+  else if (event.key === '0') seekTo(CHAPTERS.at(-1).start);
   else if (event.key.toLowerCase() === 'f') setMode('film');
   else if (event.key.toLowerCase() === 'i') setMode('inspect');
 });
 
-canvas.addEventListener('click', () => { if (mode === 'film') playBtn.click(); });
+const togglePlaybackFromCanvas = () => { if (mode === 'film') playBtn.click(); };
+canvas.addEventListener('click', togglePlaybackFromCanvas);
+fallbackCanvas.addEventListener('click', togglePlaybackFromCanvas);
 
 // Visible to deterministic QA; this surface does not mutate story state.
 window.__meridian = {
-  get t() { return t; }, set t(value) { t = Math.min(DURATION, Math.max(0, Number(value) || 0)); draw(); },
+  get t() { return t; }, set t(value) { seekTo(value); },
   get playing() { return playing; },
   get mode() { return mode; },
-  stateAt, stateHash, CHAPTERS, CAMERAS, MATCH_CUTS, shotAt, DURATION,
+  stateAt, stateHash, CHAPTERS, CAMERAS, MATCH_CUTS, shotAt, attentionCameraAt, DURATION,
+  get attentionVariant() { return attentionVariant.value; },
+  set attentionVariant(value) {
+    if (['incumbent', 'survivor-notices-first', 'audience-notices-first'].includes(value)) {
+      attentionVariant.value = value;
+      draw();
+    }
+  },
   lastShift: {
     pair: lastShiftPair,
     time: lastShiftTime,
@@ -595,9 +645,11 @@ window.__meridian = {
     get selection() { return { stage: shiftStage, month: shiftMonth, pane: shiftActivePane, divider: shiftDivider, quality: shiftQuality }; },
   },
   frameTimes: () => [...frameSamples.render],
+  frameIntervals: () => [...frameSamples.intervals],
+  render3d: () => renderer3d.metrics(),
   metrics: performanceSummary,
   resetMetrics: () => { frameSamples.intervals.length = 0; frameSamples.render.length = 0; lastTs = null; },
-  seek: (value) => { t = Math.min(DURATION, Math.max(0, Number(value) || 0)); draw(); },
+  seek: seekTo,
 };
 
 reducedToggle.checked = reduced;

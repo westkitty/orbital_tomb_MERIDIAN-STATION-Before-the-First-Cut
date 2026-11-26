@@ -50,7 +50,8 @@ async function boot(viewport = { width: 1280, height: 800 }) {
   const renderBody = stripImports(renderSrc).replace(/^export /gm, '');
   const lastShiftBody = stripImports(lastShiftSrc).replace(/^export /gm, '');
   const lastShiftRenderBody = stripImports(lastShiftRenderSrc).replace(/^export /gm, '');
-  const combined = simBody + '\n' + cameraBody + '\n' + renderBody + '\n' + lastShiftBody + '\n' + lastShiftRenderBody + '\n' + stripImports(appSrc);
+  const createMeridian3D = `const createMeridian3D = () => ({ available: false, reason: 'jsdom WebGL stub', resize() {}, render() {}, metrics() { return { available: false, reason: 'jsdom WebGL stub' }; } });`;
+  const combined = createMeridian3D + '\n' + simBody + '\n' + cameraBody + '\n' + renderBody + '\n' + lastShiftBody + '\n' + lastShiftRenderBody + '\n' + stripImports(appSrc);
   window.eval(combined);
   // drive a few frames
   for (let i = 0; i < 5 && rafCb; i++) { const cb = rafCb; rafCb = null; cb(1000 + i * 16); }
@@ -148,6 +149,35 @@ test('chapter buttons, system select, before/after do not throw', async () => {
   window.document.getElementById('baCamera').dispatchEvent(new window.Event('change'));
   assert.equal(window.__meridian.stateHash(window.__meridian.t), beforeViewHash, 'camera and compare tools do not mutate world state');
   window.__meridian.seek(36);
+  assert.deepEqual(errors, []);
+});
+
+test('inspection A/B attention selector is inspect-only and leaves world state untouched', async () => {
+  const { window, errors } = await boot();
+  const selector = window.document.getElementById('attentionVariant');
+  assert.equal(selector.disabled, true, 'camera review is inactive in Film mode');
+  window.__meridian.seek(25.8);
+  const beforeHash = window.__meridian.stateHash(25.8);
+  const original = window.__meridian.attentionCameraAt(25.8, 'incumbent');
+  const audience = window.__meridian.attentionCameraAt(25.8, 'audience-notices-first');
+  assert.notDeepEqual(audience, original);
+
+  window.document.getElementById('modeInspect').click();
+  assert.equal(selector.disabled, false);
+  selector.value = 'survivor-notices-first';
+  selector.dispatchEvent(new window.Event('change'));
+  let inspected = JSON.parse(window.document.getElementById('stateOut').textContent);
+  assert.equal(inspected.cameraAttention, 'survivor-notices-first');
+  assert.deepEqual({ ...inspected.camera }, { ...window.__meridian.attentionCameraAt(25.8, 'survivor-notices-first') });
+  selector.value = 'audience-notices-first';
+  selector.dispatchEvent(new window.Event('change'));
+  inspected = JSON.parse(window.document.getElementById('stateOut').textContent);
+  assert.equal(inspected.cameraAttention, 'audience-notices-first');
+  assert.deepEqual({ ...inspected.camera }, { ...audience });
+  assert.equal(window.__meridian.stateHash(25.8), beforeHash, 'camera attention never changes deterministic world state');
+
+  window.document.getElementById('modeFilm').click();
+  assert.equal(selector.disabled, true, 'review framing cannot alter the canonical film cut');
   assert.deepEqual(errors, []);
 });
 
